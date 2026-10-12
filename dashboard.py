@@ -22,13 +22,24 @@ import pandas as pd
 # Root project directory configuration
 PROJECT_ROOT = Path(__file__).resolve().parent
 
+# Ensure page config is set as early as possible
+try:
+    st.set_page_config(
+        page_title="BTC Market Intelligence Terminal",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+except Exception:
+    pass
+
 # Synchronize st.secrets to os.environ when hosted on Streamlit Cloud
 try:
     if hasattr(st, "secrets"):
-        for _k, _v in st.secrets.items():
+        for _k in st.secrets:
+            _v = st.secrets[_k]
             if isinstance(_v, str) and _k not in os.environ:
                 os.environ[_k] = _v
-except Exception:
+except (Exception, BaseException):
     pass
 
 # --- Custom Institutional Matte Luxury Dark Theme (Zero Emojis, High Usability) ---
@@ -991,11 +1002,14 @@ def run_pipeline_subprocess(fast_mode: bool = False, log_box: Optional[Any] = No
 
 def main():
     """Main Streamlit layout entrypoint."""
-    st.set_page_config(
-        page_title="BTC Market Intelligence Terminal",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
+    try:
+        st.set_page_config(
+            page_title="BTC Market Intelligence Terminal",
+            layout="wide",
+            initial_sidebar_state="expanded",
+        )
+    except Exception:
+        pass
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
     # Initialize Session State
