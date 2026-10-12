@@ -1,6 +1,6 @@
 """
 Streamlit Cloud entrypoint forwarder.
-Ensures seamless deployment whether the Cloud wizard targets app.py, streamlit_app.py or dashboard.py.
+Ensures seamless deployment whether the Cloud wizard targets streamlit_app.py, app.py or dashboard.py.
 """
 import sys
 from pathlib import Path
@@ -11,5 +11,4 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import dashboard
 
-if __name__ == "__main__":
-    dashboard.main()
+dashboard.main()
