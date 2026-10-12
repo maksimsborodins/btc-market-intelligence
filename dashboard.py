@@ -22,6 +22,15 @@ import pandas as pd
 # Root project directory configuration
 PROJECT_ROOT = Path(__file__).resolve().parent
 
+# Synchronize st.secrets to os.environ when hosted on Streamlit Cloud
+try:
+    if hasattr(st, "secrets"):
+        for _k, _v in st.secrets.items():
+            if isinstance(_v, str) and _k not in os.environ:
+                os.environ[_k] = _v
+except Exception:
+    pass
+
 # --- Custom Institutional Matte Luxury Dark Theme (Zero Emojis, High Usability) ---
 CUSTOM_CSS = """
 <style>
