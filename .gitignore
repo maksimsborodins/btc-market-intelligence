@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables & secrets (CRITICAL)
+.env
+.env*.local
+*.env
+
+# Local agent & teamwork session state
+.agents/
+
+# Data cache & temporary files
+data_cache/
+test_ui_screenshots/
+*.log
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Streamlit User Settings (keep .streamlit/config.toml)
+.streamlit/secrets.toml
+.streamlit/credentials.toml
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

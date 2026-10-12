@@ -1,0 +1,253 @@
+{
+  "tests_run": 49,
+  "tests_passed": 49,
+  "tests_failed": 0,
+  "findings": [],
+  "details": [
+    {
+      "name": "Buffer math (Standard BTC)",
+      "passed": true,
+      "info": "Expected 714.0, got 714.0"
+    },
+    {
+      "name": "Long 1:2 R:R (Standard BTC)",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Long 1:3 R:R (Standard BTC)",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Short 1:2 R:R (Standard BTC)",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Short 1:3 R:R (Standard BTC)",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Dollar risk equals buffer (Standard BTC)",
+      "passed": true,
+      "info": "Risk USD 714.0 vs buf 714.0"
+    },
+    {
+      "name": "Risk percentage math (Standard BTC)",
+      "passed": true,
+      "info": "Expected 0.86%, got 0.86%"
+    },
+    {
+      "name": "Buffer math (Low price asset ($100))",
+      "passed": true,
+      "info": "Expected 3.75, got 3.75"
+    },
+    {
+      "name": "Long 1:2 R:R (Low price asset ($100))",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Long 1:3 R:R (Low price asset ($100))",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Short 1:2 R:R (Low price asset ($100))",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Short 1:3 R:R (Low price asset ($100))",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Dollar risk equals buffer (Low price asset ($100))",
+      "passed": true,
+      "info": "Risk USD 3.75 vs buf 3.75"
+    },
+    {
+      "name": "Risk percentage math (Low price asset ($100))",
+      "passed": true,
+      "info": "Expected 3.75%, got 3.75%"
+    },
+    {
+      "name": "Buffer math (Mega BTC ($1,000,000))",
+      "passed": true,
+      "info": "Expected 37500.0, got 37500.0"
+    },
+    {
+      "name": "Long 1:2 R:R (Mega BTC ($1,000,000))",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Long 1:3 R:R (Mega BTC ($1,000,000))",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Short 1:2 R:R (Mega BTC ($1,000,000))",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Short 1:3 R:R (Mega BTC ($1,000,000))",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Dollar risk equals buffer (Mega BTC ($1,000,000))",
+      "passed": true,
+      "info": "Risk USD 37500.0 vs buf 37500.0"
+    },
+    {
+      "name": "Risk percentage math (Mega BTC ($1,000,000))",
+      "passed": true,
+      "info": "Expected 3.75%, got 3.75%"
+    },
+    {
+      "name": "Buffer math (Low volatility asset (ATR $0.05))",
+      "passed": true,
+      "info": "Expected 0.08, got 0.08"
+    },
+    {
+      "name": "Long 1:2 R:R (Low volatility asset (ATR $0.05))",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Long 1:3 R:R (Low volatility asset (ATR $0.05))",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Short 1:2 R:R (Low volatility asset (ATR $0.05))",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Short 1:3 R:R (Low volatility asset (ATR $0.05))",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Dollar risk equals buffer (Low volatility asset (ATR $0.05))",
+      "passed": true,
+      "info": "Risk USD 0.08 vs buf 0.08"
+    },
+    {
+      "name": "Risk percentage math (Low volatility asset (ATR $0.05))",
+      "passed": true,
+      "info": "Expected 0.0%, got 0.0%"
+    },
+    {
+      "name": "Buffer math (High volatility crash (ATR $15,000))",
+      "passed": true,
+      "info": "Expected 22500.0, got 22500.0"
+    },
+    {
+      "name": "Long 1:2 R:R (High volatility crash (ATR $15,000))",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Long 1:3 R:R (High volatility crash (ATR $15,000))",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Short 1:2 R:R (High volatility crash (ATR $15,000))",
+      "passed": true,
+      "info": "TP1 / Risk = 2.0"
+    },
+    {
+      "name": "Short 1:3 R:R (High volatility crash (ATR $15,000))",
+      "passed": true,
+      "info": "TP2 / Risk = 3.0"
+    },
+    {
+      "name": "Dollar risk equals buffer (High volatility crash (ATR $15,000))",
+      "passed": true,
+      "info": "Risk USD 22500.0 vs buf 22500.0"
+    },
+    {
+      "name": "Risk percentage math (High volatility crash (ATR $15,000))",
+      "passed": true,
+      "info": "Expected 28.12%, got 28.12%"
+    },
+    {
+      "name": "Sub-cent precision limitation (sp=$0.01, atr=$0.001)",
+      "passed": true,
+      "info": "Buffer rounds to 0.00 due to fixed 2-decimal rounding; trade risk collapses to zero"
+    },
+    {
+      "name": "ATR = 0.0 zero division immunity",
+      "passed": true,
+      "info": "Successfully returns NEUTRAL fallback"
+    },
+    {
+      "name": "Negative ATR handled safely",
+      "passed": true,
+      "info": "Negative ATR guarded by if atr <= 0 check"
+    },
+    {
+      "name": "Spot Price = 0.0 handled safely",
+      "passed": true,
+      "info": "Zero price guarded without ZeroDivisionError"
+    },
+    {
+      "name": "Direction threshold score=-100 -> SHORT",
+      "passed": true,
+      "info": "Got SHORT"
+    },
+    {
+      "name": "Direction threshold score=-16 -> SHORT",
+      "passed": true,
+      "info": "Got SHORT"
+    },
+    {
+      "name": "Direction threshold score=-15 -> SHORT",
+      "passed": true,
+      "info": "Got SHORT"
+    },
+    {
+      "name": "Direction threshold score=-14 -> NEUTRAL",
+      "passed": true,
+      "info": "Got NEUTRAL"
+    },
+    {
+      "name": "Direction threshold score=0 -> NEUTRAL",
+      "passed": true,
+      "info": "Got NEUTRAL"
+    },
+    {
+      "name": "Direction threshold score=14 -> NEUTRAL",
+      "passed": true,
+      "info": "Got NEUTRAL"
+    },
+    {
+      "name": "Direction threshold score=15 -> LONG",
+      "passed": true,
+      "info": "Got LONG"
+    },
+    {
+      "name": "Direction threshold score=16 -> LONG",
+      "passed": true,
+      "info": "Got LONG"
+    },
+    {
+      "name": "Direction threshold score=100 -> LONG",
+      "passed": true,
+      "info": "Got LONG"
+    },
+    {
+      "name": "Extreme volatility SL floor check (ATR > spot)",
+      "passed": true,
+      "info": "Long SL is -70000.0 (< 0). Function does not clamp SL to 0.0 for extreme volatility."
+    }
+  ]
+}

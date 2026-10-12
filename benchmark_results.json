@@ -1,0 +1,39 @@
+{
+  "num_runs": 10,
+  "exit_codes": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "all_zero_exit": true,
+  "wall_latencies": [
+    3.456,
+    3.67,
+    3.815,
+    3.416,
+    3.511,
+    3.409,
+    3.865,
+    3.45,
+    3.532,
+    3.451
+  ],
+  "min_latency_sec": 3.409,
+  "max_latency_sec": 3.865,
+  "mean_latency_sec": 3.557,
+  "median_latency_sec": 3.484,
+  "stdev_latency_sec": 0.167,
+  "p95_latency_sec": 3.815,
+  "internal_reported_mean_sec": 2.634,
+  "violations_count": 0,
+  "violation_details": [],
+  "snapshot_validity_all_pass": true,
+  "tracker_validity_all_pass": true
+}

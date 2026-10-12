@@ -1,0 +1,158 @@
+[
+  {
+    "epoch": 1791660398.978505,
+    "timestamp_utc": "2026-10-10T19:26:38+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83034.05,
+    "futures_price": 82989.5,
+    "open_interest_btc": 92491.643,
+    "funding_pct": -0.0004
+  },
+  {
+    "epoch": 1791661149.010061,
+    "timestamp_utc": "2026-10-10T19:39:09+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83086.22,
+    "futures_price": 83037.6,
+    "open_interest_btc": 92486.312,
+    "funding_pct": -0.0003
+  },
+  {
+    "epoch": 1791661554.7443488,
+    "timestamp_utc": "2026-10-10T19:45:54+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83088.0,
+    "futures_price": 83037.7,
+    "open_interest_btc": 92483.184,
+    "funding_pct": -0.0003
+  },
+  {
+    "epoch": 1791662582.6146317,
+    "timestamp_utc": "2026-10-10T20:03:02+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83085.44,
+    "futures_price": 83042.9,
+    "open_interest_btc": 92445.49,
+    "funding_pct": -0.0006
+  },
+  {
+    "epoch": 1791664257.2094865,
+    "timestamp_utc": "2026-10-10T20:30:57+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83046.99,
+    "futures_price": 82997.9,
+    "open_interest_btc": 92701.864,
+    "funding_pct": -0.0007
+  },
+  {
+    "epoch": 1791667704.3432727,
+    "timestamp_utc": "2026-10-10T21:28:24+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83057.16,
+    "futures_price": 83015.1,
+    "open_interest_btc": 92700.523,
+    "funding_pct": -0.0001
+  },
+  {
+    "epoch": 1791668394.855455,
+    "timestamp_utc": "2026-10-10T21:39:54+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83069.82,
+    "futures_price": 83032.8,
+    "open_interest_btc": 92679.874,
+    "funding_pct": -0.0
+  },
+  {
+    "epoch": 1791668535.7283843,
+    "timestamp_utc": "2026-10-10T21:42:15+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83078.9,
+    "futures_price": 83043.2,
+    "open_interest_btc": 92675.846,
+    "funding_pct": -0.0
+  },
+  {
+    "epoch": 1791707062.1188471,
+    "timestamp_utc": "2026-10-11T08:24:22+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83056.16,
+    "futures_price": 83011.1,
+    "open_interest_btc": 92959.38,
+    "funding_pct": -0.0008,
+    "quant_bias_score": 17,
+    "quant_bias_label": "BULLISH",
+    "oi_zscore": -0.878,
+    "funding_zscore": -1.277,
+    "divergence_state": "Neutral / Ranging"
+  },
+  {
+    "epoch": 1791708675.3515167,
+    "timestamp_utc": "2026-10-11T08:51:15+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83090.01,
+    "futures_price": 83041.8,
+    "open_interest_btc": 92995.274,
+    "funding_pct": -0.0008,
+    "quant_bias_score": 10,
+    "quant_bias_label": "NEUTRAL",
+    "oi_zscore": -0.871,
+    "funding_zscore": -1.281,
+    "divergence_state": "Neutral / Ranging"
+  },
+  {
+    "epoch": 1791708896.527075,
+    "timestamp_utc": "2026-10-11T08:54:56+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83080.35,
+    "futures_price": 83031.2,
+    "open_interest_btc": 92996.683,
+    "funding_pct": -0.0008,
+    "quant_bias_score": 10,
+    "quant_bias_label": "NEUTRAL",
+    "oi_zscore": -0.871,
+    "funding_zscore": -1.299,
+    "divergence_state": "Neutral / Ranging"
+  },
+  {
+    "epoch": 1791712297.7242928,
+    "timestamp_utc": "2026-10-11T09:51:37+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 82988.68,
+    "futures_price": 82939.9,
+    "open_interest_btc": 93127.338,
+    "funding_pct": -0.0015,
+    "quant_bias_score": 25,
+    "quant_bias_label": "BULLISH",
+    "oi_zscore": -0.842,
+    "funding_zscore": -1.461,
+    "divergence_state": "Bullish Continuation (Long Build-up)"
+  },
+  {
+    "epoch": 1791712864.4373627,
+    "timestamp_utc": "2026-10-11T10:01:04+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83040.0,
+    "futures_price": 82999.9,
+    "open_interest_btc": 93111.649,
+    "funding_pct": -0.0015,
+    "quant_bias_score": 32,
+    "quant_bias_label": "BULLISH",
+    "oi_zscore": -0.845,
+    "funding_zscore": -1.477,
+    "divergence_state": "Bullish Continuation (Long Build-up)"
+  },
+  {
+    "epoch": 1791835304.3248222,
+    "timestamp_utc": "2026-10-12T20:01:44+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 82857.97,
+    "futures_price": 82832.0,
+    "open_interest_btc": 94023.329,
+    "funding_pct": 0.0027,
+    "quant_bias_score": -18,
+    "quant_bias_label": "BEARISH",
+    "oi_zscore": -0.57,
+    "funding_zscore": -0.397,
+    "divergence_state": "Bearish Continuation (Short Build-up)"
+  }
+]
