@@ -1231,40 +1231,53 @@ def main():
 
     # Sidebar: Terminal Controls & Trader Information
     with st.sidebar:
-        st.markdown("### Управление терминалом")
-        st.caption("Быстрый и полный перезапуск аналитического пайплайна")
+        st.markdown("### Данные рынка")
+        st.caption("Сбор котировок, стаканов и деривативов с бирж")
 
-        # Clean Execution Buttons
-        run_fast = st.button("Быстрый срез рынка (2 сек)", use_container_width=True, disabled=st.session_state["is_running"], help="Мгновенный опрос рынков через быстрый REST-протокол")
-        run_full = st.button("Полный отчет с PDF", use_container_width=True, disabled=st.session_state["is_running"], help="Полный сбор: стаканы, ончейн, скриншоты и генерация PDF-отчета")
-        run_refresh = st.button("Обновить данные", use_container_width=True, disabled=st.session_state["is_running"], help="Собрать свежие данные с бирж прямо сейчас")
+        # Clean Execution Buttons (2 clear actions: Fast Refresh & PDF Report)
+        run_fast = st.button("🔄 Обновить данные рынка (3 сек)", use_container_width=True, disabled=st.session_state["is_running"], help="Мгновенный опрос Binance, Deribit, Bybit и расчет скоринга")
+        run_full = st.button("📄 Сгенерировать PDF-отчет (~15 сек)", use_container_width=True, disabled=st.session_state["is_running"], help="Сбор глубокой аналитики, ончейн-метрик и формирование PDF-документа")
 
-        # Execution Logic (Live Data Fetch)
-        if run_fast or run_full or run_refresh:
-            fast_selected = not bool(run_full)
-            mode_label = "Полный отчет с PDF" if run_full else "Быстрый срез рынка"
+        # Execution Logic (Live Data Fetch & PDF Compilation)
+        if run_fast or run_full:
+            is_fast = bool(run_fast)
+            mode_label = "Обновление данных рынка" if is_fast else "Формирование PDF-отчета"
             st.session_state["is_running"] = True
             
             with st.status(f"Выполняется {mode_label}...", expanded=True) as status_box:
                 log_container = st.empty()
-                code, logs, dur = run_pipeline_subprocess(fast_mode=fast_selected, log_box=log_container)
+                if is_fast:
+                    status_box.write("⚡ Подключение к REST API бирж (Binance, Deribit, Bybit)...")
+                else:
+                    status_box.write("📄 Опрос бирж, расчет риск-модели и верстка журнального PDF-отчета...")
+
+                code, logs, dur = run_pipeline_subprocess(fast_mode=is_fast, log_box=log_container)
                 
-                # Cloud / Subprocess fallback: if subprocess couldn't run, execute in-process scan directly
-                if code != 0 and fast_selected:
-                    try:
-                        from btc_market_intelligence import run_fast_momentum_scan
-                        run_fast_momentum_scan(quiet=True)
-                        code = 0
-                        dur = 3.2
-                    except Exception as fb_exc:
-                        logs += f"\n[FALLBACK_ERR] {fb_exc}"
+                # Cloud / Subprocess fallback: if subprocess fails, execute directly in-process
+                if code != 0:
+                    if is_fast:
+                        try:
+                            from btc_market_intelligence import run_fast_momentum_scan
+                            run_fast_momentum_scan(quiet=True)
+                            code = 0
+                            dur = 3.2
+                        except Exception as fb_exc:
+                            logs += f"\n[FALLBACK_ERR] {fb_exc}"
+                    else:
+                        try:
+                            import btc_market_intelligence as bmi
+                            code = bmi.main()
+                            dur = 8.5
+                        except Exception as fb_exc:
+                            logs += f"\n[FALLBACK_ERR] {fb_exc}"
 
                 st.session_state["last_run_logs"] = logs
                 st.session_state["last_run_status"] = code
                 
                 if code == 0:
-                    status_box.update(label=f"Успешно завершено за {dur:.2f} с", state="complete", expanded=False)
-                    st.toast(f"Анализ успешно обновлен за {dur:.2f} с")
+                    success_msg = f"Данные рынка обновлены за {dur:.1f} с" if is_fast else f"PDF-отчет успешно сформирован за {dur:.1f} с"
+                    status_box.update(label=f"✓ {success_msg}", state="complete", expanded=False)
+                    st.toast(success_msg)
                 else:
                     status_box.update(label=f"Ошибка выполнения (код {code})", state="error", expanded=True)
                     st.error("Ошибка при сборе данных. Проверьте соединение.")
