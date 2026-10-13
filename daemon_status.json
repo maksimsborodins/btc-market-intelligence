@@ -1,0 +1,17 @@
+{
+  "status": "RUNNING",
+  "pid": 8324,
+  "uptime_seconds": 545.8,
+  "cycles_completed": 28,
+  "interval_seconds": 20,
+  "last_cycle_duration_sec": 0.6,
+  "last_heartbeat_utc": "2026-10-13T11:48:43+00:00",
+  "spot_price": 83477.94,
+  "feeds": {
+    "binance": "OK",
+    "bybit": "OK",
+    "coinbase": "OK",
+    "onchain": "OK"
+  },
+  "last_error": null
+}

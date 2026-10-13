@@ -38,12 +38,21 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    genai = None
-    types = None
+from quant_enhancements import (
+    detect_market_regime,
+    calculate_regime_adaptive_bias,
+    calculate_liquidity_aware_stops,
+    compute_calibration_performance_metrics,
+    REGIME_WEIGHTS,
+    REGIME_HIGH_VOL_SQUEEZE,
+    REGIME_TRENDING_BULL,
+    REGIME_TRENDING_BEAR,
+    REGIME_LOW_VOL_CONSOLIDATION,
+    REGIME_BALANCED_NORMAL,
+)
+
+genai = None
+types = None
 
 import base64
 try:
@@ -146,13 +155,14 @@ SESSION.headers.update({
 _retries = Retry(
     total=1,
     connect=1,
-    read=1,
-    backoff_factor=0.25,
-    status_forcelist=(429, 500, 502, 503, 504),
+    read=0,
+    backoff_factor=0.1,
+    status_forcelist=(429, 502, 504),
     allowed_methods=frozenset(["GET"]),
-    respect_retry_after_header=True,
+    respect_retry_after_header=False,
 )
-SESSION.mount("https://", HTTPAdapter(pool_connections=32, pool_maxsize=32, max_retries=_retries))
+SESSION.mount("https://", HTTPAdapter(pool_connections=64, pool_maxsize=64, max_retries=_retries))
+SESSION.mount("http://", HTTPAdapter(pool_connections=64, pool_maxsize=64, max_retries=_retries))
 
 
 class DataIntegrityError(RuntimeError):
@@ -183,7 +193,7 @@ def finite_float(value: Any, default: Optional[float] = None) -> Optional[float]
 
 def safe_get_json(url: str, params: Optional[dict] = None) -> Any:
     try:
-        response = SESSION.get(url, params=params, timeout=(3, TIMEOUT_SEC))
+        response = SESSION.get(url, params=params, timeout=(1.5, min(TIMEOUT_SEC, 2.5)))
         response.raise_for_status()
         return response.json()
     except Exception as exc:
@@ -193,7 +203,7 @@ def safe_get_json(url: str, params: Optional[dict] = None) -> Any:
 
 def safe_get_text(url: str) -> Optional[str]:
     try:
-        response = SESSION.get(url, timeout=(3, TIMEOUT_SEC))
+        response = SESSION.get(url, timeout=(1.5, min(TIMEOUT_SEC, 2.5)))
         response.raise_for_status()
         return response.text
     except Exception as exc:
@@ -264,11 +274,23 @@ def aggregate_delta(klines: list, count: int) -> dict:
     }
 
 
-def fetch_spot_flow(symbol: str) -> dict:
-    k1m = fetch_klines(BINANCE_SPOT, symbol, "1m", 15)
-    k5m = fetch_klines(BINANCE_SPOT, symbol, "5m", 15)
-    k15 = fetch_klines(BINANCE_SPOT, symbol, "15m", 8)
-    k1h = fetch_klines(BINANCE_SPOT, symbol, "30m", 30) if False else fetch_klines(BINANCE_SPOT, symbol, "1h", 30)
+def fetch_spot_flow(symbol: str, spot_klines: Optional[dict] = None) -> dict:
+    if spot_klines and "1m" in spot_klines and "5m" in spot_klines and "15m" in spot_klines and "1h" in spot_klines:
+        k1m = spot_klines["1m"]
+        k5m = spot_klines["5m"]
+        k15 = spot_klines["15m"]
+        k1h = spot_klines["1h"]
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as inner_pool:
+            f_k1m = inner_pool.submit(fetch_klines, BINANCE_SPOT, symbol, "1m", 15)
+            f_k5m = inner_pool.submit(fetch_klines, BINANCE_SPOT, symbol, "5m", 15)
+            f_k15 = inner_pool.submit(fetch_klines, BINANCE_SPOT, symbol, "15m", 8)
+            f_k1h = inner_pool.submit(fetch_klines, BINANCE_SPOT, symbol, "1h", 30)
+
+            k1m = f_k1m.result()
+            k5m = f_k5m.result()
+            k15 = f_k15.result()
+            k1h = f_k1h.result()
     closed15 = only_closed_klines(k15)
     
     delta_1m = aggregate_delta(k1m, 1)
@@ -596,7 +618,9 @@ def detect_divergence_engine(price_change_pct: float, oi_change_pct: float) -> d
     }
 
 
-def calculate_quant_bias(metrics: dict) -> dict:
+def calculate_quant_bias(metrics: dict, regime_adaptive: bool = False) -> dict:
+    if regime_adaptive:
+        return calculate_regime_adaptive_bias(metrics)
     score = 0.0
     breakdown = {}
 
@@ -677,109 +701,35 @@ def calculate_quant_bias(metrics: dict) -> dict:
     return {
         "composite_score": final_score,
         "bias_label": label,
-        "breakdown": breakdown
+        "breakdown": breakdown,
+        "market_regime": detect_market_regime(metrics).get("regime", "BALANCED_NORMAL") if metrics else "BALANCED_NORMAL",
     }
 
 
 # -------------------------- РИСК-МОДЕЛЬ ATR И ОНЧЕЙН -------------------------
 
-def calculate_atr_risk_levels(spot_price: float, atr14: float, quant_bias_score: int = 0) -> dict:
+def calculate_atr_risk_levels(
+    spot_price: float,
+    atr14: float,
+    quant_bias_score: int = 0,
+    spread_usd: Optional[float] = None,
+    taker_fee_pct: float = 0.0005,
+    orderbook_depth: Optional[dict] = None,
+) -> dict:
     """
     Рассчитывает динамические уровни стоп-лосса по ATR (буфер 1.5x ATR)
     и целевые уровни тейк-профита 1:2 и 1:3 Risk:Reward для Long, Short и Neutral.
+    Включает институциональные квант-расширения: учет спреда, комиссий и плотностей стакана.
     """
-    sp = float(spot_price or 0.0)
-    atr = float(atr14 or 0.0)
-    score = int(quant_bias_score or 0)
+    return calculate_liquidity_aware_stops(
+        spot_price=spot_price,
+        atr14=atr14,
+        quant_bias_score=quant_bias_score,
+        spread_usd=spread_usd,
+        taker_fee_pct=taker_fee_pct,
+        orderbook_depth=orderbook_depth,
+    )
 
-    if sp <= 0 or atr <= 0:
-        return {
-            "atr14": atr,
-            "buffer": 0.0,
-            "direction": "NEUTRAL",
-            "entry_price": sp,
-            "long": {
-                "stop_loss": sp,
-                "tp1_rr2": sp,
-                "tp2_rr3": sp,
-                "risk_usd": 0.0,
-                "risk_pct": 0.0,
-            },
-            "short": {
-                "stop_loss": sp,
-                "tp1_rr2": sp,
-                "tp2_rr3": sp,
-                "risk_usd": 0.0,
-                "risk_pct": 0.0,
-            },
-            "recommended": {
-                "scenario": "NEUTRAL",
-                "stop_loss": sp,
-                "tp1_rr2": sp,
-                "tp2_rr3": sp,
-            },
-        }
-
-    buffer = round(1.5 * atr, 2)
-    risk_pct = round((buffer / sp) * 100, 2) if sp > 0 else 0.0
-
-    if score >= 15:
-        direction = "LONG"
-    elif score <= -15:
-        direction = "SHORT"
-    else:
-        direction = "NEUTRAL"
-
-    long_sl = round(sp - buffer, 2)
-    long_tp1 = round(sp + 2.0 * buffer, 2)
-    long_tp2 = round(sp + 3.0 * buffer, 2)
-
-    short_sl = round(sp + buffer, 2)
-    short_tp1 = round(sp - 2.0 * buffer, 2)
-    short_tp2 = round(sp - 3.0 * buffer, 2)
-
-    if direction == "LONG":
-        rec_scenario = "LONG"
-        rec_sl = long_sl
-        rec_tp1 = long_tp1
-        rec_tp2 = long_tp2
-    elif direction == "SHORT":
-        rec_scenario = "SHORT"
-        rec_sl = short_sl
-        rec_tp1 = short_tp1
-        rec_tp2 = short_tp2
-    else:
-        rec_scenario = "NEUTRAL"
-        rec_sl = long_sl if score >= 0 else short_sl
-        rec_tp1 = long_tp1 if score >= 0 else short_tp1
-        rec_tp2 = long_tp2 if score >= 0 else short_tp2
-
-    return {
-        "atr14": round(atr, 2),
-        "buffer": buffer,
-        "direction": direction,
-        "entry_price": sp,
-        "long": {
-            "stop_loss": long_sl,
-            "tp1_rr2": long_tp1,
-            "tp2_rr3": long_tp2,
-            "risk_usd": buffer,
-            "risk_pct": risk_pct,
-        },
-        "short": {
-            "stop_loss": short_sl,
-            "tp1_rr2": short_tp1,
-            "tp2_rr3": short_tp2,
-            "risk_usd": buffer,
-            "risk_pct": risk_pct,
-        },
-        "recommended": {
-            "scenario": rec_scenario,
-            "stop_loss": rec_sl,
-            "tp1_rr2": rec_tp1,
-            "tp2_rr3": rec_tp2,
-        },
-    }
 
 
 def classify_mvrv_stage(z: Optional[float]) -> str:
@@ -1178,6 +1128,11 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
             RAW_SNAPSHOT_FILE.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as exc:
             print(f"[WARN] Сбой сохранения снимка: {exc}")
+        try:
+            history = read_history()
+            save_snapshot(binance, history)
+        except Exception as exc:
+            print(f"[WARN] Сбой обновления истории: {exc}")
 
     if not quiet:
         print_fast_scan_cli_table(snapshot)
@@ -1189,23 +1144,23 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
     print("[*] Сбор глубокой телеметрии Binance...")
     statuses = {}
 
-    intervals_fut = (("1w", 60), ("3d", 100), ("1d", 150), ("12h", 100), ("4h", 150), ("1h", 150), ("15m", 150), ("5m", 150))
-    intervals_spot = (("1d", 90), ("4h", 150), ("1h", 150), ("15m", 150), ("5m", 150))
+    intervals_fut = (("1w", 35), ("3d", 35), ("1d", 35), ("12h", 35), ("4h", 35), ("1h", 35), ("15m", 35), ("5m", 35))
+    intervals_spot = (("1d", 35), ("4h", 35), ("1h", 35), ("15m", 35), ("5m", 35))
 
     if parallel:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=24) as pool:
             f_spot_ticker = pool.submit(safe_get_json, f"{BINANCE_SPOT}/api/v3/ticker/price", {"symbol": SYMBOL})
             f_fut_ticker = pool.submit(safe_get_json, f"{BINANCE_FUTURES}/fapi/v1/ticker/price", {"symbol": SYMBOL})
             f_ticker24 = pool.submit(safe_get_json, f"{BINANCE_SPOT}/api/v3/ticker/24hr", {"symbol": SYMBOL})
             f_premium = pool.submit(safe_get_json, f"{BINANCE_FUTURES}/fapi/v1/premiumIndex", {"symbol": SYMBOL})
             f_live_oi = pool.submit(safe_get_json, f"{BINANCE_FUTURES}/fapi/v1/openInterest", {"symbol": SYMBOL})
-            f_spot_flow = pool.submit(fetch_spot_flow, SYMBOL)
+            f_k1m = pool.submit(fetch_klines, BINANCE_SPOT, SYMBOL, "1m", 15)
 
             f_fut_klines = {inter: pool.submit(fetch_klines, BINANCE_FUTURES, SYMBOL, inter, lim) for inter, lim in intervals_fut}
             f_spot_klines = {inter: pool.submit(fetch_klines, BINANCE_SPOT, SYMBOL, inter, lim) for inter, lim in intervals_spot}
 
-            f_oi_hist = pool.submit(safe_get_json, f"{BINANCE_FUTURES}/futures/data/openInterestHist", {"symbol": SYMBOL, "period": "1h", "limit": 500})
-            f_last_funding = pool.submit(safe_get_json, f"{BINANCE_FUTURES}/fapi/v1/fundingRate", {"symbol": SYMBOL, "limit": 500})
+            f_oi_hist = pool.submit(safe_get_json, f"{BINANCE_FUTURES}/futures/data/openInterestHist", {"symbol": SYMBOL, "period": "1h", "limit": 50})
+            f_last_funding = pool.submit(safe_get_json, f"{BINANCE_FUTURES}/fapi/v1/fundingRate", {"symbol": SYMBOL, "limit": 50})
 
             f_ratios = {
                 "global_accounts_long_short_1h": pool.submit(fetch_ratio, "globalLongShortAccountRatio", "1h"),
@@ -1213,18 +1168,19 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
                 "top_trader_accounts_1h": pool.submit(fetch_ratio, "topLongShortAccountRatio", "1h"),
                 "top_trader_positions_1h": pool.submit(fetch_ratio, "topLongShortPositionRatio", "1h"),
             }
-            f_ob_spot = pool.submit(fetch_orderbook_snapshot, BINANCE_SPOT, "/api/v3/depth", SYMBOL, 1000, 1.0)
-            f_ob_fut = pool.submit(fetch_orderbook_snapshot, BINANCE_FUTURES, "/fapi/v1/depth", SYMBOL, 1000, 1.0)
+            f_ob_spot = pool.submit(fetch_orderbook_snapshot, BINANCE_SPOT, "/api/v3/depth", SYMBOL, 500, 1.0)
+            f_ob_fut = pool.submit(fetch_orderbook_snapshot, BINANCE_FUTURES, "/fapi/v1/depth", SYMBOL, 500, 1.0)
 
             spot_ticker = f_spot_ticker.result()
             fut_ticker = f_fut_ticker.result()
             ticker24 = f_ticker24.result()
             premium = f_premium.result()
             live_oi_data = f_live_oi.result()
-            spot_flow = f_spot_flow.result()
+            k1m = f_k1m.result()
 
             raw_fut = {inter: f_fut_klines[inter].result() for inter, _ in intervals_fut}
             raw_spot = {inter: f_spot_klines[inter].result() for inter, _ in intervals_spot}
+            spot_flow = fetch_spot_flow(SYMBOL, {**raw_spot, "1m": k1m})
             oi_history = f_oi_hist.result()
             last_funding = f_last_funding.result()
             ratios = {k: v.result() for k, v in f_ratios.items()}
@@ -1236,19 +1192,20 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
         ticker24 = safe_get_json(f"{BINANCE_SPOT}/api/v3/ticker/24hr", {"symbol": SYMBOL})
         premium = safe_get_json(f"{BINANCE_FUTURES}/fapi/v1/premiumIndex", {"symbol": SYMBOL})
         live_oi_data = safe_get_json(f"{BINANCE_FUTURES}/fapi/v1/openInterest", {"symbol": SYMBOL})
-        spot_flow = fetch_spot_flow(SYMBOL)
+        k1m = fetch_klines(BINANCE_SPOT, SYMBOL, "1m", 15)
         raw_fut = {inter: fetch_klines(BINANCE_FUTURES, SYMBOL, inter, lim) for inter, lim in intervals_fut}
         raw_spot = {inter: fetch_klines(BINANCE_SPOT, SYMBOL, inter, lim) for inter, lim in intervals_spot}
-        oi_history = safe_get_json(f"{BINANCE_FUTURES}/futures/data/openInterestHist", {"symbol": SYMBOL, "period": "1h", "limit": 500})
-        last_funding = safe_get_json(f"{BINANCE_FUTURES}/fapi/v1/fundingRate", {"symbol": SYMBOL, "limit": 500})
+        spot_flow = fetch_spot_flow(SYMBOL, {**raw_spot, "1m": k1m})
+        oi_history = safe_get_json(f"{BINANCE_FUTURES}/futures/data/openInterestHist", {"symbol": SYMBOL, "period": "1h", "limit": 50})
+        last_funding = safe_get_json(f"{BINANCE_FUTURES}/fapi/v1/fundingRate", {"symbol": SYMBOL, "limit": 50})
         ratios = {
             "global_accounts_long_short_1h": fetch_ratio("globalLongShortAccountRatio", "1h"),
             "futures_taker_buy_sell_1h": fetch_ratio("takerlongshortRatio", "1h"),
             "top_trader_accounts_1h": fetch_ratio("topLongShortAccountRatio", "1h"),
             "top_trader_positions_1h": fetch_ratio("topLongShortPositionRatio", "1h"),
         }
-        ob_spot = fetch_orderbook_snapshot(BINANCE_SPOT, "/api/v3/depth", SYMBOL, 1000, 1.0)
-        ob_fut = fetch_orderbook_snapshot(BINANCE_FUTURES, "/fapi/v1/depth", SYMBOL, 1000, 1.0)
+        ob_spot = fetch_orderbook_snapshot(BINANCE_SPOT, "/api/v3/depth", SYMBOL, 500, 1.0)
+        ob_fut = fetch_orderbook_snapshot(BINANCE_FUTURES, "/fapi/v1/depth", SYMBOL, 500, 1.0)
 
     if not isinstance(spot_ticker, dict) or not isinstance(fut_ticker, dict):
         raise DataIntegrityError("Критические котировки спота или фьючерсов Binance недоступны.")
@@ -1377,7 +1334,6 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
     score_val = result["quant_bias"].get("composite_score", 0)
     result["risk_model"] = calculate_atr_risk_levels(spot_price, atr14_val, score_val)
     result["atr_risk"] = result["risk_model"]
-
     return result, statuses
 
 
@@ -1386,7 +1342,7 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
 def bybit_get(path: str, params: dict) -> Any:
     """Unauthenticated public Bybit V5 market data."""
     try:
-        response = SESSION.get(f"{BYBIT_API_BASE}{path}", params=params, timeout=(3, TIMEOUT_SEC))
+        response = SESSION.get(f"{BYBIT_API_BASE}{path}", params=params, timeout=(1.5, min(TIMEOUT_SEC, 2.0)))
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, dict) or data.get("retCode") != 0:
@@ -1812,6 +1768,14 @@ def fetch_deribit_options() -> dict:
 
 def fetch_deribit_dvol() -> dict:
     """Бесплатный публичный индекс подразумеваемой волатильности Bitcoin (Crypto VIX / DVOL)."""
+    cached = load_disk_cache("deribit_dvol_cache.json", ttl_seconds=15 * 60)
+    if cached and cached.get("current_dvol") is not None:
+        cached["cache_status"] = "CACHE_HIT"
+        return cached
+    if cached and cached.get("status") == "UNAVAILABLE":
+        # Temporary failure backoff (within 3 minutes)
+        return cached
+
     now_ms = int(time.time() * 1000)
     params = {
         "currency": "BTC",
@@ -1828,20 +1792,38 @@ def fetch_deribit_dvol() -> dict:
                 # Формат строки: [timestamp, open, high, low, close]
                 dvol_val = float(latest[4])
                 regime = "Высокая (High Volatility)" if dvol_val >= 55.0 else ("Умеренная (Normal)" if dvol_val >= 40.0 else "Низкая (Compressed Vol)")
-                return {
+                res = {
                     "status": "OK",
                     "source": "Deribit BTC DVOL Index",
                     "current_dvol": round(dvol_val, 2),
                     "dvol_regime": regime,
                     "date_utc": iso_utc(datetime.fromtimestamp(latest[0] / 1000, tz=timezone.utc)),
+                    "cache_status": "LIVE_FETCH",
                 }
+                save_disk_cache("deribit_dvol_cache.json", res)
+                return res
     except Exception as exc:
-        return {"status": "UNAVAILABLE", "reason": str(exc)}
-    return {"status": "UNAVAILABLE", "reason": "No DVOL index data"}
+        stale = load_disk_cache("deribit_dvol_cache.json", ttl_seconds=86400 * 2)
+        if stale and stale.get("current_dvol"):
+            stale["cache_status"] = "STALE_FALLBACK"
+            return stale
+        err_res = {"status": "UNAVAILABLE", "reason": str(exc)}
+        save_disk_cache("deribit_dvol_cache.json", err_res)
+        return err_res
+    stale = load_disk_cache("deribit_dvol_cache.json", ttl_seconds=86400 * 2)
+    if stale and stale.get("current_dvol"):
+        stale["cache_status"] = "STALE_FALLBACK"
+        return stale
+    err_res = {"status": "UNAVAILABLE", "reason": "No DVOL index data"}
+    save_disk_cache("deribit_dvol_cache.json", err_res)
+    return err_res
 
 
 def fetch_coinbase_orderbook(threshold_pct: float = 1.0) -> dict:
     """Бесплатный институциональный фиатный стакан BTC-USD с Coinbase Pro (Level 2 Depth)."""
+    cached = load_disk_cache("coinbase_orderbook_cache.json", ttl_seconds=30)
+    if cached and cached.get("status") == "OK":
+        return cached
     try:
         url = f"{COINBASE_API_BASE}/products/BTC-USD/book?level=2"
         data = safe_get_json(url)
@@ -1861,7 +1843,7 @@ def fetch_coinbase_orderbook(threshold_pct: float = 1.0) -> dict:
                 ask_qty = sum(asks)
                 ratio = round(bid_qty / ask_qty, 3) if ask_qty > 0 else None
 
-                return {
+                res = {
                     "status": "OK",
                     "source": "Coinbase Pro BTC-USD L2",
                     "best_bid": best_bid,
@@ -1872,37 +1854,64 @@ def fetch_coinbase_orderbook(threshold_pct: float = 1.0) -> dict:
                     "bid_vs_ask_ratio": ratio,
                     "threshold_pct": threshold_pct,
                 }
+                save_disk_cache("coinbase_orderbook_cache.json", res)
+                return res
     except Exception as exc:
         return {"status": "UNAVAILABLE", "reason": str(exc)}
     return {"status": "UNAVAILABLE", "reason": "No Coinbase L2 data"}
 
 
+
 def fetch_cme_basis(spot_price: float = 0.0) -> dict:
     """Бесплатные котировки фьючерсов Чикагской биржи (CME Bitcoin Futures BTC=F) и расчет гэпа."""
-    try:
-        data = safe_get_json(CME_YAHOO_URL, {"range": "5d", "interval": "1d"})
-        if isinstance(data, dict):
-            chart = data.get("chart", {}).get("result", [])
-            if chart and isinstance(chart, list):
-                meta = chart[0].get("meta", {})
-                cme_last = finite_float(meta.get("regularMarketPrice"))
-                cme_prev = finite_float(meta.get("chartPreviousClose") or meta.get("previousClose"))
-                if cme_last:
-                    basis = round(cme_last - spot_price, 2) if spot_price > 0 else None
-                    basis_pct = round((cme_last / spot_price - 1) * 100, 3) if spot_price > 0 else None
-                    gap_usd = round(spot_price - cme_last, 2) if spot_price > 0 else None
-                    return {
-                        "status": "OK",
-                        "source": "CME Bitcoin Futures (Front Month BTC=F)",
-                        "cme_last_price": cme_last,
-                        "cme_prev_close": cme_prev,
-                        "basis_vs_spot_usd": basis,
-                        "basis_vs_spot_pct": basis_pct,
-                        "weekend_gap_usd": gap_usd,
-                        "regular_market_time_utc": iso_utc(datetime.fromtimestamp(meta.get("regularMarketTime", 0), tz=timezone.utc)) if meta.get("regularMarketTime") else None,
-                    }
-    except Exception as exc:
-        return {"status": "UNAVAILABLE", "reason": str(exc)}
+    cached = load_disk_cache("cme_basis_cache.json", ttl_seconds=10 * 60)
+    cme_last = None
+    cme_prev = None
+    reg_time = None
+    if cached and cached.get("cme_last_price"):
+        cme_last = cached.get("cme_last_price")
+        cme_prev = cached.get("cme_prev_close")
+        reg_time = cached.get("regular_market_time_utc")
+    else:
+        try:
+            data = safe_get_json(CME_YAHOO_URL, {"range": "5d", "interval": "1d"})
+            if isinstance(data, dict):
+                chart = data.get("chart", {}).get("result", [])
+                if chart and isinstance(chart, list):
+                    meta = chart[0].get("meta", {})
+                    cme_last = finite_float(meta.get("regularMarketPrice"))
+                    cme_prev = finite_float(meta.get("chartPreviousClose") or meta.get("previousClose"))
+                    if meta.get("regularMarketTime"):
+                        reg_time = iso_utc(datetime.fromtimestamp(meta.get("regularMarketTime", 0), tz=timezone.utc))
+                    if cme_last:
+                        save_disk_cache("cme_basis_cache.json", {
+                            "cme_last_price": cme_last,
+                            "cme_prev_close": cme_prev,
+                            "regular_market_time_utc": reg_time,
+                        })
+        except Exception:
+            pass
+        if not cme_last:
+            stale = load_disk_cache("cme_basis_cache.json", ttl_seconds=86400 * 3)
+            if stale and stale.get("cme_last_price"):
+                cme_last = stale.get("cme_last_price")
+                cme_prev = stale.get("cme_prev_close")
+                reg_time = stale.get("regular_market_time_utc")
+
+    if cme_last:
+        basis = round(cme_last - spot_price, 2) if spot_price > 0 else None
+        basis_pct = round((cme_last / spot_price - 1) * 100, 3) if spot_price > 0 else None
+        gap_usd = round(spot_price - cme_last, 2) if spot_price > 0 else None
+        return {
+            "status": "OK",
+            "source": "CME Bitcoin Futures (Front Month BTC=F)",
+            "cme_last_price": cme_last,
+            "cme_prev_close": cme_prev,
+            "basis_vs_spot_usd": basis,
+            "basis_vs_spot_pct": basis_pct,
+            "weekend_gap_usd": gap_usd,
+            "regular_market_time_utc": reg_time,
+        }
     return {"status": "UNAVAILABLE", "reason": "No CME futures data"}
 
 
@@ -2669,14 +2678,33 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
             "wins": sum(1 for x in neutrals if x.get("is_win") is True),
         }
         stats["status"] = "ACTIVE_CALIBRATION"
+        advanced = compute_calibration_performance_metrics(tracker)
+        stats["expected_value_pct"] = advanced.get("expected_value_pct")
+        stats["expected_value_usd"] = advanced.get("expected_value_usd")
+        stats["profit_factor"] = advanced.get("profit_factor")
+        stats["sharpe_ratio"] = advanced.get("sharpe_ratio")
+        stats["sortino_ratio"] = advanced.get("sortino_ratio")
+        stats["max_drawdown_pct"] = advanced.get("max_drawdown_pct")
+        stats["kelly_fraction"] = advanced.get("kelly_fraction")
+        stats["half_kelly_fraction"] = advanced.get("half_kelly_fraction")
+        stats["advanced_performance_metrics"] = advanced
         stats["readout"] = (
             f"Винрейт скоринга: {overall_wr}% ({wins}W / {total_resolved - wins}L из {total_resolved} сигналов). "
+            f"Мат. ожидание (EV): {advanced.get('expected_value_pct', 0.0):+.2f}% / trade. "
             f"Бычьи сигналы: {bull_wr if bull_wr is not None else 'N/A'}% WR. "
             f"Медвежьи сигналы: {bear_wr if bear_wr is not None else 'N/A'}% WR."
         )
     else:
         stats["status"] = "ACCUMULATING_DATA"
         stats["overall_win_rate_pct"] = None
+        stats["expected_value_pct"] = None
+        stats["expected_value_usd"] = None
+        stats["profit_factor"] = None
+        stats["sharpe_ratio"] = None
+        stats["sortino_ratio"] = None
+        stats["max_drawdown_pct"] = 0.0
+        stats["kelly_fraction"] = 0.0
+        stats["half_kelly_fraction"] = 0.0
         stats["readout"] = (
             f"База калибровки накапливает данные: {len(pending_list)} активных сигналов в ожидании 24-часового закрытия. "
             f"Статистика винрейта появится после первых 24 часов."
@@ -2758,10 +2786,17 @@ SYSTEM_INSTRUCTION = """
 
 
 def run_gemini_synthesis(payload: dict, screenshots: list[dict]) -> str:
+    global genai, types
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY отсутствует в файле .env")
     if genai is None or types is None:
-        raise RuntimeError("Установите пакет google-genai: pip install google-genai")
+        try:
+            from google import genai as _genai
+            from google.genai import types as _types
+            genai = _genai
+            types = _types
+        except ImportError:
+            raise RuntimeError("Установите пакет google-genai: pip install google-genai")
 
     print(f"[*] Синтез рыночного брифа через {GEMINI_MODEL}...")
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -3248,9 +3283,13 @@ def run_self_tests() -> int:
             test_pdf_p.unlink()
         try:
             pdf_res = export_report_to_pdf("# Тест заголовка\n\nТестовый текст", test_pdf_p, screenshots=None)
-            assert pdf_res is True, "PDF exporter should return True on success"
-            assert test_pdf_p.exists() and test_pdf_p.stat().st_size > 1000, "PDF file should be created and non-empty"
-            checks.append("export_report_to_pdf: Playwright HTML to PDF compilation")
+            if sync_playwright is not None and markdown is not None:
+                assert pdf_res is True, "PDF exporter should return True on success"
+                assert test_pdf_p.exists() and test_pdf_p.stat().st_size > 1000, "PDF file should be created and non-empty"
+                checks.append("export_report_to_pdf: Playwright HTML to PDF compilation")
+            else:
+                assert pdf_res is False, "PDF exporter should return False when playwright or markdown unavailable"
+                checks.append("export_report_to_pdf: Graceful fallback when Playwright/Markdown unavailable")
         finally:
             if test_pdf_p.exists():
                 test_pdf_p.unlink()

@@ -19,6 +19,21 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 
+from ui_components import (
+    INSTITUTIONAL_THEME_CSS,
+    get_institutional_theme_css,
+    load_daemon_telemetry,
+    render_daemon_indicator_widget,
+    render_network_health_radar,
+    render_orderbook_depth_section,
+    create_orderbook_depth_chart,
+)
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Root project directory configuration
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -42,368 +57,9 @@ try:
 except (Exception, BaseException):
     pass
 
-# --- Custom Institutional Matte Luxury Dark Theme (Zero Emojis, High Usability) ---
-CUSTOM_CSS = """
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+# --- Custom Institutional Bloomberg / TradingView Dark Theme (#0B0E14, Cyan, Amber) ---
+CUSTOM_CSS = INSTITUTIONAL_THEME_CSS
 
-    /* Global Matte Luxury Dark Theme */
-    html, body, [class*="css"], .stApp {
-        background-color: #0e1117 !important;
-        color: #e6edf3 !important;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-    }
-
-    /* Subtle custom scrollbars */
-    ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-        background: #11141a;
-    }
-    ::-webkit-scrollbar-thumb {
-        background: #2d3342;
-        border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: #c5a880;
-    }
-
-    /* Top Ticker Tape - Muted, Calm, Non-blinding */
-    .bloomberg-ticker-tape {
-        background: #141720;
-        border: 1px solid rgba(197, 168, 128, 0.22);
-        padding: 0.55rem 1.15rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 0.85rem;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.78rem;
-        margin-bottom: 1rem;
-        border-radius: 10px;
-    }
-    .ticker-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        white-space: nowrap;
-    }
-    .ticker-symbol {
-        color: #c5a880;
-        font-weight: 600;
-        letter-spacing: 0.03em;
-    }
-    .ticker-val {
-        color: #ffffff;
-        font-weight: 600;
-    }
-    .ticker-pos { color: #2ebd85; font-weight: 600; }
-    .ticker-neg { color: #f6465d; font-weight: 600; }
-    .ticker-neutral { color: #d4b483; font-weight: 600; }
-
-    /* Top Executive Header */
-    .terminal-header {
-        background: #141720;
-        padding: 1.15rem 1.45rem;
-        border-radius: 12px;
-        border: 1px solid rgba(197, 168, 128, 0.2);
-        margin-bottom: 1.15rem;
-    }
-    .terminal-title {
-        font-family: 'Inter', sans-serif;
-        font-size: 1.55rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        color: #ffffff;
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-    }
-    .terminal-title span.gold-highlight {
-        color: #dfc18b;
-    }
-    .terminal-subtitle {
-        font-size: 0.8rem;
-        color: #8b949e;
-        font-family: 'Inter', sans-serif;
-        margin-top: 0.25rem;
-        font-weight: 400;
-    }
-
-    /* Calm Status Badge */
-    .bloomberg-status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(46, 189, 133, 0.1);
-        color: #2ebd85;
-        border: 1px solid rgba(46, 189, 133, 0.35);
-        padding: 4px 10px;
-        border-radius: 8px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.72rem;
-        font-weight: 600;
-    }
-    .live-dot {
-        width: 7px;
-        height: 7px;
-        background-color: #2ebd85;
-        border-radius: 50%;
-        display: inline-block;
-    }
-
-    /* KPI Cards - Fixed Geometry, Locked Baselines, Zero Shift */
-    .kpi-card {
-        background: #161a24;
-        border: 1px solid rgba(197, 168, 128, 0.16);
-        border-radius: 12px;
-        padding: 0.85rem 1rem;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        min-height: 108px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        box-sizing: border-box;
-        transition: border-color 0.18s ease;
-    }
-    .kpi-card:hover {
-        border-color: rgba(223, 193, 139, 0.45);
-    }
-    .kpi-title {
-        font-size: 0.71rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: #8b949e;
-        font-family: 'Inter', sans-serif;
-        font-weight: 600;
-        height: 2.1rem;
-        line-height: 1.05rem;
-        display: flex;
-        align-items: flex-start;
-        overflow: hidden;
-        margin-bottom: 0.25rem;
-    }
-    .kpi-value {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #ffffff;
-        line-height: 1.5rem;
-        height: 1.5rem;
-        display: flex;
-        align-items: center;
-        font-family: 'JetBrains Mono', monospace;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        margin-bottom: 0.2rem;
-    }
-    .kpi-sub {
-        font-size: 0.74rem;
-        line-height: 1.25rem;
-        height: 1.25rem;
-        display: flex;
-        align-items: center;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .kpi-delta-pos {
-        color: #2ebd85;
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 500;
-    }
-    .kpi-delta-neg {
-        color: #f6465d;
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 500;
-    }
-    .kpi-delta-neutral {
-        color: #c5a880;
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 500;
-    }
-
-    /* Badges */
-    .badge-bullish {
-        background: rgba(46, 189, 133, 0.12);
-        color: #2ebd85;
-        border: 1px solid rgba(46, 189, 133, 0.35);
-        padding: 2px 8px;
-        border-radius: 6px;
-        font-size: 0.71rem;
-        font-weight: 600;
-        font-family: 'JetBrains Mono', monospace;
-        display: inline-block;
-    }
-    .badge-bearish {
-        background: rgba(246, 70, 93, 0.12);
-        color: #f6465d;
-        border: 1px solid rgba(246, 70, 93, 0.35);
-        padding: 2px 8px;
-        border-radius: 6px;
-        font-size: 0.71rem;
-        font-weight: 600;
-        font-family: 'JetBrains Mono', monospace;
-        display: inline-block;
-    }
-    .badge-neutral {
-        background: rgba(197, 168, 128, 0.12);
-        color: #dfc18b;
-        border: 1px solid rgba(197, 168, 128, 0.35);
-        padding: 2px 8px;
-        border-radius: 6px;
-        font-size: 0.71rem;
-        font-weight: 600;
-        font-family: 'JetBrains Mono', monospace;
-        display: inline-block;
-    }
-
-    /* Content Panels */
-    .content-panel {
-        background: #141720;
-        border: 1px solid rgba(197, 168, 128, 0.15);
-        border-radius: 12px;
-        padding: 1.25rem;
-        margin-bottom: 1.15rem;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    }
-
-    /* Streamlit Tabs - Modern Soft Capsule */
-    .stTabs [data-baseweb="tab-list"] {
-        background: #11141c !important;
-        border: 1px solid rgba(197, 168, 128, 0.18) !important;
-        border-radius: 12px !important;
-        padding: 4px !important;
-        gap: 6px !important;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #8b949e !important;
-        background: transparent !important;
-        font-family: 'Inter', sans-serif !important;
-        font-size: 0.82rem !important;
-        font-weight: 500 !important;
-        border-radius: 8px !important;
-        padding: 8px 16px !important;
-        border: none !important;
-        transition: all 0.15s ease !important;
-    }
-    .stTabs [data-baseweb="tab"]:hover {
-        color: #dfc18b !important;
-        background: rgba(197, 168, 128, 0.08) !important;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #ffffff !important;
-        background: #1e2330 !important;
-        border: 1px solid rgba(223, 193, 139, 0.4) !important;
-        font-weight: 600 !important;
-    }
-    .stTabs [data-baseweb="tab-highlight"] {
-        display: none !important;
-    }
-
-    /* Sidebar - Clean, Distraction Free */
-    section[data-testid="stSidebar"] {
-        background-color: #11141a !important;
-        border-right: 1px solid rgba(197, 168, 128, 0.16) !important;
-    }
-    section[data-testid="stSidebar"] h1, 
-    section[data-testid="stSidebar"] h2, 
-    section[data-testid="stSidebar"] h3 {
-        color: #dfc18b !important;
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 600 !important;
-        font-size: 1.05rem !important;
-    }
-
-    /* Buttons - Clean Soft Gold */
-    .stButton > button, div.stDownloadButton > button {
-        background: #191d28 !important;
-        color: #dfc18b !important;
-        border: 1px solid rgba(223, 193, 139, 0.35) !important;
-        font-family: 'Inter', sans-serif !important;
-        font-size: 0.84rem !important;
-        font-weight: 600 !important;
-        border-radius: 10px !important;
-        padding: 0.55rem 1rem !important;
-        transition: all 0.15s ease !important;
-    }
-    .stButton > button:hover, div.stDownloadButton > button:hover {
-        background: #c5a880 !important;
-        color: #0e1117 !important;
-        border-color: #dfc18b !important;
-    }
-
-    /* Metrics Styling */
-    [data-testid="stMetric"] {
-        background: #161a24 !important;
-        border: 1px solid rgba(197, 168, 128, 0.14) !important;
-        border-radius: 12px !important;
-        padding: 0.75rem 1rem !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-    }
-    [data-testid="stMetricValue"] {
-        font-family: 'JetBrains Mono', monospace !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
-        font-size: 1.25rem !important;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #8b949e !important;
-        font-size: 0.75rem !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.03em !important;
-    }
-
-    /* Dataframe & Tables Styling */
-    [data-testid="stDataFrame"] {
-        border: 1px solid rgba(197, 168, 128, 0.18) !important;
-        border-radius: 10px !important;
-        overflow: hidden !important;
-    }
-
-    /* Clean Trading Status Card in Sidebar */
-    .sidebar-status-card {
-        background: #161a24;
-        border: 1px solid rgba(197, 168, 128, 0.18);
-        border-radius: 12px;
-        padding: 0.85rem 1rem;
-        margin-top: 1rem;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-    }
-    .sidebar-stat-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 6px 0;
-        border-bottom: 1px solid rgba(197, 168, 128, 0.08);
-    }
-    .sidebar-stat-row:last-child {
-        border-bottom: none;
-    }
-    .sidebar-stat-label {
-        font-size: 0.72rem;
-        color: #8b949e;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-        font-family: 'Inter', sans-serif;
-    }
-    .sidebar-stat-val {
-        font-size: 0.78rem;
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 600;
-        color: #ffffff;
-    }
-    .sidebar-stat-val-gold {
-        font-size: 0.78rem;
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 600;
-        color: #dfc18b;
-    }
-</style>
-"""
 
 
 # --- Robust Data Hydration Helpers ---
@@ -970,6 +626,8 @@ def run_pipeline_subprocess(fast_mode: bool = False, log_box: Optional[Any] = No
     start_time = time.time()
     
     try:
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
         proc = subprocess.Popen(
             cmd,
             cwd=PROJECT_ROOT,
@@ -979,6 +637,7 @@ def run_pipeline_subprocess(fast_mode: bool = False, log_box: Optional[Any] = No
             encoding="utf-8",
             errors="replace",
             bufsize=1,
+            env=env,
         )
 
         captured_lines = []
@@ -990,7 +649,13 @@ def run_pipeline_subprocess(fast_mode: bool = False, log_box: Optional[Any] = No
                     log_box.markdown(f'<div class="console-stream">{recent}</div>', unsafe_allow_html=True)
 
         proc.stdout.close()
-        return_code = proc.wait()
+        try:
+            return_code = proc.wait(timeout=45 if fast_mode else 180)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            return_code = 124
+            captured_lines.append("\n[ERROR] Превышено время ожидания процесса (таймаут).")
+
         duration = time.time() - start_time
         return return_code, "".join(captured_lines), duration
     except Exception as exc:
@@ -1019,9 +684,21 @@ def main():
         st.session_state["last_run_logs"] = ""
     if "last_run_status" not in st.session_state:
         st.session_state["last_run_status"] = None
+    if "last_run_duration" not in st.session_state:
+        st.session_state["last_run_duration"] = None
+    if "last_run_mode" not in st.session_state:
+        st.session_state["last_run_mode"] = None
+    if "last_run_time" not in st.session_state:
+        st.session_state["last_run_time"] = None
 
     # Load artifacts
     snapshot = load_market_snapshot()
+    if not snapshot or not snapshot.get("spot_price"):
+        try:
+            from btc_market_intelligence import run_fast_momentum_scan
+            snapshot = run_fast_momentum_scan(quiet=True)
+        except Exception:
+            pass
     history = load_market_history()
     tracker = load_calibration_tracker()
     markdown_content = load_markdown_report()
@@ -1092,7 +769,7 @@ def main():
         <div class="terminal-header">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                 <div>
-                    <div class="terminal-title">BTC MARKET INTELLIGENCE TERMINAL</div>
+                    <div class="terminal-title">BTC MARKET INTELLIGENCE TERMINAL <span class="cyan-highlight">PRO</span></div>
                     <div class="terminal-subtitle">Институциональная торговая аналитика и количественный риск-менеджмент</div>
                 </div>
                 <div style="text-align: right;">
@@ -1100,13 +777,18 @@ def main():
                         <span class="live-dot"></span>
                         <span>ПОДКЛЮЧЕНО К БИРЖАМ</span>
                     </div>
-                    <div style="font-size: 0.72rem; color: #8b949e; font-family: 'JetBrains Mono', monospace; margin-top: 5px;">Потоки: Binance Spot & Futures | Deribit | CME</div>
+                    <div style="font-size: 0.72rem; color: #7E8B9B; font-family: 'JetBrains Mono', monospace; margin-top: 5px;">Потоки: Binance Spot & Futures | Bybit | Coinbase L2 | Deribit | CME</div>
                 </div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    # 3. Autonomous Daemon Live Heartbeat & Network Health Radar
+    daemon_telemetry = load_daemon_telemetry()
+    render_daemon_indicator_widget(daemon_telemetry)
+    render_network_health_radar(snapshot=snapshot)
 
     # Render Top KPI Ribbon (Responsive 4 + 4 Grid)
     # Row 1: Core Price Action & Quant Bias
@@ -1231,16 +913,12 @@ def main():
         # Clean Execution Buttons
         run_fast = st.button("Быстрый срез рынка (2 сек)", use_container_width=True, disabled=st.session_state["is_running"], help="Мгновенный опрос рынков через быстрый REST-протокол")
         run_full = st.button("Полный отчет с PDF", use_container_width=True, disabled=st.session_state["is_running"], help="Полный сбор: стаканы, ончейн, скриншоты и генерация PDF-отчета")
-
-        # Refresh Button
-        if st.button("Обновить данные", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
+        run_refresh = st.button("Обновить данные", use_container_width=True, disabled=st.session_state["is_running"], help="Собрать свежие данные с бирж и обновить графики")
 
         # Subprocess Execution Logic
-        if run_fast or run_full:
-            fast_selected = bool(run_fast)
-            mode_label = "Быстрый срез рынка" if fast_selected else "Полный отчет с PDF"
+        if run_fast or run_full or run_refresh:
+            fast_selected = not bool(run_full)
+            mode_label = "Полный отчет с PDF" if run_full else "Быстрый срез рынка"
             st.session_state["is_running"] = True
             
             with st.status(f"Выполняется {mode_label}...", expanded=True) as status_box:
@@ -1248,6 +926,9 @@ def main():
                 code, logs, dur = run_pipeline_subprocess(fast_mode=fast_selected, log_box=log_container)
                 st.session_state["last_run_logs"] = logs
                 st.session_state["last_run_status"] = code
+                st.session_state["last_run_duration"] = dur
+                st.session_state["last_run_mode"] = mode_label
+                st.session_state["last_run_time"] = datetime.now().strftime("%H:%M:%S")
                 
                 if code == 0:
                     status_box.update(label=f"Успешно завершено за {dur:.2f} с", state="complete", expanded=False)
@@ -1260,6 +941,25 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
+        # Secondary: Reload from local file without network
+        if st.button("Перечитать из файла (без сети)", use_container_width=True, help="Перезагрузить локальный снимок market_snapshot.json без сетевых запросов"):
+            st.cache_data.clear()
+            st.rerun()
+
+        # Persistent Execution Status & Logs
+        if st.session_state.get("last_run_status") is not None:
+            last_code = st.session_state["last_run_status"]
+            last_dur = st.session_state.get("last_run_duration", 0.0)
+            last_time = st.session_state.get("last_run_time", "")
+            last_mode = st.session_state.get("last_run_mode", "Сбор данных")
+            if last_code == 0:
+                st.caption(f"✓ {last_mode}: обновлено за {last_dur:.2f} с ({last_time})")
+            else:
+                st.error(f"⚠ Сбой сбора данных (код {last_code}, {last_time})")
+            
+            with st.expander("Консоль последнего запуска", expanded=(last_code != 0)):
+                st.code(st.session_state.get("last_run_logs", "Логи отсутствуют"), language="text")
+
         st.markdown("---")
         st.markdown("### Сводка для трейдера")
         snap_time = snapshot.get("timestamp_utc", "Н/Д")
@@ -1268,6 +968,10 @@ def main():
         badge_cls = "badge-bullish" if quant_score >= 15 else ("badge-bearish" if quant_score <= -15 else "badge-neutral")
         pdf_label_color = '#2ebd85' if has_pdf else '#8b949e'
         pdf_label_text = 'Готов' if has_pdf else 'Не сформирован'
+
+        daemon_color = '#00E676' if daemon_telemetry.get('is_active') else ('#FFAA00' if daemon_telemetry.get('status') == 'STOPPED' else '#FF3D71')
+        daemon_label = daemon_telemetry.get('status', 'STOPPED')
+        daemon_pid_str = f" (PID {daemon_telemetry.get('pid')})" if daemon_telemetry.get('pid') else ""
 
         st.markdown(
             f"""
@@ -1279,6 +983,10 @@ def main():
                 <div class="sidebar-stat-row">
                     <span class="sidebar-stat-label">Quant Скоринг</span>
                     <span class="sidebar-stat-val-gold">{quant_score:+d} / 100</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Автономный демон</span>
+                    <span class="sidebar-stat-val" style="color: {daemon_color};">{daemon_label}{daemon_pid_str}</span>
                 </div>
                 <div class="sidebar-stat-row">
                     <span class="sidebar-stat-label">Срез (UTC)</span>
@@ -1336,23 +1044,14 @@ def main():
             st.plotly_chart(breakdown_fig, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="content-panel">', unsafe_allow_html=True)
-        st.markdown("#### Глубина биржевого стакана Binance Spot (±1.0%)")
-        
+        # Enhanced Institutional Orderbook Depth & Bid-Ask Wall Section (Coinbase L2 / Binance / Aggregate)
+        render_orderbook_depth_section(snapshot)
+
+        # Retain underlying telemetry variables for backwards compatibility
         binance_ob = snapshot.get("binance", {}).get("orderbook_depth_summary", {})
         b_spot_bids = sanitize_number(binance_ob.get("bids_btc"), 0.0)
         b_spot_asks = sanitize_number(binance_ob.get("asks_btc"), 0.0)
         b_ratio = sanitize_number(binance_ob.get("bid_ask_ratio"), 1.0)
-        
-        ob_col1, ob_col2, ob_col3 = st.columns(3)
-        with ob_col1:
-            st.metric("Биды спота (±1%)", f"{b_spot_bids:,.1f} BTC")
-        with ob_col2:
-            st.metric("Аски спота (±1%)", f"{b_spot_asks:,.1f} BTC")
-        with ob_col3:
-            st.metric("Соотношение Bid/Ask", f"{b_ratio:.2f}x", delta="Покупатели" if b_ratio > 1.2 else ("Продавцы" if b_ratio < 0.8 else "Баланс"))
-        
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # TAB 2: Interactive Technical & Orderflow Charts
     with tab_charts:

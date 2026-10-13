@@ -14,11 +14,14 @@ import time
 import json
 import unittest
 import tempfile
+import sys
 from pathlib import Path
 from unittest.mock import patch
 import requests
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 import btc_market_intelligence as bmi
 from tests.test_helpers import reference_atr_risk_levels, run_cli
 

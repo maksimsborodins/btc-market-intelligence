@@ -42,11 +42,9 @@ if errorlevel 1 (
     echo [OK] Dependencies installed successfully.
 )
 
-:: 4. Ensure market snapshot exists before running dashboard
-if not exist "market_snapshot.json" (
-    echo [*] Market snapshot not found. Running fast momentum scan to fetch fresh data...
-    %PYTHON_EXE% btc_market_intelligence.py --fast
-)
+:: 4. Fetch latest market telemetry before launching dashboard
+echo [*] Fetching fresh market telemetry (fast momentum scan)...
+%PYTHON_EXE% btc_market_intelligence.py --fast
 
 :: 5. Free port 8501 if lingering from a previous Python/Streamlit session
 powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8501 -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; if ($p.ProcessName -like '*python*') { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } }" >nul 2>&1
