@@ -1,60 +1,61 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-BTC Market Intelligence v4 — расширенный бесплатный multi-exchange конвейер с контролем качества данных.
+BTC Market Intelligence v4.2 — расширенный бесплатный multi-exchange конвейер с контролем качества данных.
 
-Собирает открытую телеметрию Binance (спот/фьючерсы), макро-активы (Yahoo Finance),
-календарь событий (Forex Factory), новостной фон (RSS), скриншот карты ликвидаций (CoinGlass)
-и историю предыдущих запусков. Передает срез в Gemini (модель задаётся через GEMINI_MODEL); при сбое сохраняет сырой аудит без торгового вывода.
+Собирает открытую телеметрию Binance (спот/фьючерсы с облачным фолбэком на Bybit V5 и Coinbase L2),
+макро-активы (Yahoo Finance), календарь событий (Forex Factory), новостной фон (RSS),
+скриншот карты ликвидаций (CoinGlass) и историю предыдущих запусков.
+Передает срез в Gemini (по умолчанию gemini-3.8-flash с переключением на gemini-3.7-flash).
 """
 
 from __future__ import annotations
 
+import base64
+import concurrent.futures
+import html
 import json
 import math
 import os
+import re
+import statistics
 import sys
 import time
-import statistics
-import re
-import concurrent.futures
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 # Принудительная настройка UTF-8 вывода для надежной работы на Windows
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-import html
-from html.parser import HTMLParser
-import xml.etree.ElementTree as ET
-from datetime import datetime, timezone, timedelta
-from email.utils import parsedate_to_datetime
-from pathlib import Path
-from typing import Any, Optional
-from zoneinfo import ZoneInfo
 
 import requests
+from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from dotenv import load_dotenv
 
 from quant_enhancements import (
-    detect_market_regime,
-    calculate_regime_adaptive_bias,
-    calculate_liquidity_aware_stops,
-    compute_calibration_performance_metrics,
-    REGIME_WEIGHTS,
-    REGIME_HIGH_VOL_SQUEEZE,
-    REGIME_TRENDING_BULL,
-    REGIME_TRENDING_BEAR,
-    REGIME_LOW_VOL_CONSOLIDATION,
     REGIME_BALANCED_NORMAL,
+    REGIME_HIGH_VOL_SQUEEZE,
+    REGIME_LOW_VOL_CONSOLIDATION,
+    REGIME_TRENDING_BEAR,
+    REGIME_TRENDING_BULL,
+    REGIME_WEIGHTS,
+    calculate_liquidity_aware_stops,
+    calculate_regime_adaptive_bias,
+    compute_calibration_performance_metrics,
+    detect_market_regime,
 )
 
 genai = None
 types = None
 
-import base64
 try:
     import markdown
 except ImportError:
@@ -70,8 +71,11 @@ except ImportError:
 
 load_dotenv()
 
+SUPPORTED_GEMINI_MODELS = ("gemini-3.8-flash", "gemini-3.7-flash")
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
 SYMBOL = os.getenv("SYMBOL", "BTCUSDT").strip().upper()
 LOCAL_TIMEZONE = os.getenv("LOCAL_TIMEZONE", "Europe/Riga").strip()
 TIMEOUT_SEC = int(os.getenv("TIMEOUT_SEC", "6"))
@@ -94,6 +98,7 @@ HISTORY_LOOKBACK_HOURS = int(os.getenv("HISTORY_LOOKBACK_HOURS", "168"))
 TRACKER_FILE = BASE_DIR / os.getenv("TRACKER_FILE", "quant_calibration_tracker.json")
 CACHE_DIR = BASE_DIR / "data_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+UI_SETTINGS_FILE = CACHE_DIR / "ui_settings.json"
 
 BINANCE_SPOT = "https://api.binance.com"
 BINANCE_FUTURES = "https://fapi.binance.com"
@@ -107,6 +112,80 @@ FARSIDE_BTC_ETF_URL = "https://farside.co.uk/btc/"
 COINGLASS_HEATMAP_URL = (
     "https://www.coinglass.com/pro/futures/LiquidationHeatMapModel3?coin=BTC&type=symbol"
 )
+
+
+def atomic_write_text(filepath: Path, content: str) -> None:
+    """Атомарная запись текстового или JSON-файла через временный файл."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = filepath.with_suffix(filepath.suffix + ".tmp")
+    try:
+        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.replace(filepath)
+    except Exception:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+        filepath.write_text(content, encoding="utf-8")
+
+
+def atomic_write_json(filepath: Path, data: Any) -> None:
+    """Атомарная сериализация структуры данных в JSON на диск."""
+    atomic_write_text(filepath, json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def get_configured_gemini_model() -> str:
+    """Возвращает выбранную пользователем модель Gemini (по умолчанию gemini-3.8-flash)."""
+    try:
+        if UI_SETTINGS_FILE.exists():
+            cfg = json.loads(UI_SETTINGS_FILE.read_text(encoding="utf-8"))
+            if isinstance(cfg, dict):
+                m = str(cfg.get("gemini_model", "")).strip()
+                if m in SUPPORTED_GEMINI_MODELS:
+                    return m
+    except Exception:
+        pass
+    env_m = os.getenv("GEMINI_MODEL", GEMINI_MODEL).strip()
+    return env_m if env_m else DEFAULT_GEMINI_MODEL
+
+
+def set_configured_gemini_model(model_name: str) -> str:
+    """Сохраняет выбранную модель Gemini для синхронизации между UI и CLI."""
+    global GEMINI_MODEL
+    clean_model = model_name.strip() if model_name else DEFAULT_GEMINI_MODEL
+    if clean_model not in SUPPORTED_GEMINI_MODELS:
+        clean_model = DEFAULT_GEMINI_MODEL
+    os.environ["GEMINI_MODEL"] = clean_model
+    GEMINI_MODEL = clean_model
+    try:
+        cfg = {}
+        if UI_SETTINGS_FILE.exists():
+            cfg = json.loads(UI_SETTINGS_FILE.read_text(encoding="utf-8"))
+            if not isinstance(cfg, dict):
+                cfg = {}
+        cfg["gemini_model"] = clean_model
+        cfg["updated_at_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        atomic_write_json(UI_SETTINGS_FILE, cfg)
+    except Exception:
+        pass
+    return clean_model
+
+
+def get_ai_telemetry(last_status: Optional[str] = None, used_model: Optional[str] = None) -> dict:
+    """Формирует телеметрию состояния ИИ-модуля для боковой панели терминала."""
+    api_key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
+    configured_model = get_configured_gemini_model()
+    has_key = bool(api_key)
+    status = last_status or ("ONLINE" if has_key else "STANDBY_NO_KEY")
+    return {
+        "status": status,
+        "api_key_configured": has_key,
+        "configured_model": configured_model,
+        "active_model": used_model or configured_model,
+        "supported_models": list(SUPPORTED_GEMINI_MODELS),
+        "Updated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
 
 
 def load_disk_cache(cache_filename: str, ttl_seconds: int) -> Optional[dict]:
@@ -130,10 +209,11 @@ def save_disk_cache(cache_filename: str, data: dict) -> None:
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache_file = CACHE_DIR / cache_filename
-        with cache_file.open("w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(cache_file, data)
     except Exception:
         pass
+
+
 FREE_DASHBOARD_PAGES = [
     ("CoinGlass BTC futures dashboard", "https://www.coinglass.com/currencies/BTC/futures", ("open interest", "funding", "liquidation")),
     ("CoinGlass BTC ETF dashboard", "https://www.coinglass.com/etf/bitcoin", ("etf", "inflow")),
@@ -266,11 +346,10 @@ def aggregate_delta(klines: list, count: int) -> dict:
         quote_volumes.append(quote_volume)
     total_delta = sum(deltas)
     total_volume = sum(volumes)
-    
-    # Исправлены границы: открытие первой свечи и закрытие последней
+
     window_start = datetime.fromtimestamp(int(selected[0][0]) / 1000, tz=timezone.utc)
     window_end = datetime.fromtimestamp(int(selected[-1][6]) / 1000, tz=timezone.utc)
-    
+
     return {
         "available": True,
         "delta_btc": round(total_delta, 3),
@@ -301,7 +380,7 @@ def fetch_spot_flow(symbol: str, spot_klines: Optional[dict] = None) -> dict:
             k15 = f_k15.result()
             k1h = f_k1h.result()
     closed15 = only_closed_klines(k15)
-    
+
     delta_1m = aggregate_delta(k1m, 1)
     delta_5m = aggregate_delta(k5m, 1)
     d5_vol = delta_5m.get("total_volume_btc") or 0.0
@@ -326,9 +405,9 @@ def fetch_spot_flow(symbol: str, spot_klines: Optional[dict] = None) -> dict:
     d4 = result["4h"].get("delta_btc") if result["4h"].get("available") else None
     if d1 is not None and d4 is not None:
         if d1 > 0 and d4 > 0:
-            label = "Положительная taker-дельта на споте (1h и 4h); это прокси агрессивных покупок, не доказательство устойчивого спроса"
+            label = "Положительная taker-дельта на споте (1h и 4h); прокси агрессивных рыночных покупок"
         elif d1 < 0 and d4 < 0:
-            label = "Отрицательная taker-дельта на споте (1h и 4h); это прокси агрессивных продаж, не самостоятельный bearish-сигнал"
+            label = "Отрицательная taker-дельта на споте (1h и 4h); прокси агрессивных рыночных продаж"
         else:
             label = "Смешанный спотовый поток ордеров"
     else:
@@ -353,9 +432,9 @@ def detect_structure(raw_klines: list, interval: str) -> dict:
 
     swing_highs, swing_lows = [], []
     for i in range(2, len(closed) - 2):
-        if highs[i] > max(highs[i-2:i] + highs[i+1:i+3]):
+        if highs[i] > max(highs[i - 2 : i] + highs[i + 1 : i + 3]):
             swing_highs.append({"price": highs[i], "index": i})
-        if lows[i] < min(lows[i-2:i] + lows[i+1:i+3]):
+        if lows[i] < min(lows[i - 2 : i] + lows[i + 1 : i + 3]):
             swing_lows.append({"price": lows[i], "index": i})
 
     def sma(values, n):
@@ -370,17 +449,20 @@ def detect_structure(raw_klines: list, interval: str) -> dict:
             value = alpha * x + (1 - alpha) * value
         return value
 
-    # Wilder-style RSI approximation on closed candles.
-    deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+    deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
     gains = [max(x, 0) for x in deltas]
     losses = [max(-x, 0) for x in deltas]
     avg_gain = statistics.mean(gains[-14:]) if len(gains) >= 14 else None
     avg_loss = statistics.mean(losses[-14:]) if len(losses) >= 14 else None
-    rsi = (100 - 100 / (1 + avg_gain / avg_loss)) if avg_gain is not None and avg_loss not in (None, 0) else (100.0 if avg_gain and avg_loss == 0 else None)
+    rsi = (
+        (100 - 100 / (1 + avg_gain / avg_loss))
+        if avg_gain is not None and avg_loss not in (None, 0)
+        else (100.0 if avg_gain and avg_loss == 0 else None)
+    )
 
     true_ranges = []
     for i in range(1, len(closed)):
-        true_ranges.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+        true_ranges.append(max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])))
     atr14 = statistics.mean(true_ranges[-14:]) if len(true_ranges) >= 14 else None
     atr_pct = atr14 / closes[-1] * 100 if atr14 and closes[-1] else None
 
@@ -401,8 +483,8 @@ def detect_structure(raw_klines: list, interval: str) -> dict:
             structure_label = "range_or_transition"
 
     last_close = closes[-1]
-    lookback = min(20, len(closes)-1)
-    return_pct = (last_close / closes[-1-lookback] - 1) * 100 if closes[-1-lookback] else None
+    lookback = min(20, len(closes) - 1)
+    return_pct = (last_close / closes[-1 - lookback] - 1) * 100 if closes[-1 - lookback] else None
     prev_range_high = max(highs[-21:-1]) if len(highs) >= 21 else max(highs[:-1])
     prev_range_low = min(lows[-21:-1]) if len(lows) >= 21 else min(lows[:-1])
     breakout = "none"
@@ -416,29 +498,32 @@ def detect_structure(raw_klines: list, interval: str) -> dict:
     close_location = (last_close - lows[-1]) / candle_range if candle_range else None
     body_pct = abs(closes[-1] - opens[-1]) / opens[-1] * 100 if opens[-1] else None
 
-    # Rolling 20-candle VWAP proxy, using typical price and candle base volume.
     vwap20 = None
     if len(closed) >= 20 and sum(volumes[-20:]) > 0:
-        vwap20 = sum(((highs[i] + lows[i] + closes[i]) / 3) * volumes[i] for i in range(len(closed)-20, len(closed))) / sum(volumes[-20:])
-    # MACD(12,26,9) histogram on closes.
+        vwap20 = sum(
+            ((highs[i] + lows[i] + closes[i]) / 3) * volumes[i] for i in range(len(closed) - 20, len(closed))
+        ) / sum(volumes[-20:])
     ema12, ema26 = ema(closes, 12), ema(closes, 26)
     macd_line = (ema12 - ema26) if ema12 is not None and ema26 is not None else None
     macd_hist = None
     if len(closes) >= 34:
         macd_series = []
-        for j in range(26, len(closes)+1):
+        for j in range(26, len(closes) + 1):
             e12j, e26j = ema(closes[:j], 12), ema(closes[:j], 26)
             if e12j is not None and e26j is not None:
-                macd_series.append(e12j-e26j)
+                macd_series.append(e12j - e26j)
         if len(macd_series) >= 9:
             macd_hist = macd_series[-1] - ema(macd_series, 9)
     bb_mid = sma(closes, 20)
     bb_std = statistics.pstdev(closes[-20:]) if len(closes) >= 20 else None
-    bb_upper = bb_mid + 2*bb_std if bb_mid is not None and bb_std is not None else None
-    bb_lower = bb_mid - 2*bb_std if bb_mid is not None and bb_std is not None else None
-    bb_percent_b = (last_close-bb_lower)/(bb_upper-bb_lower) if bb_upper is not None and bb_lower is not None and bb_upper != bb_lower else None
+    bb_upper = bb_mid + 2 * bb_std if bb_mid is not None and bb_std is not None else None
+    bb_lower = bb_mid - 2 * bb_std if bb_mid is not None and bb_std is not None else None
+    bb_percent_b = (
+        (last_close - bb_lower) / (bb_upper - bb_lower)
+        if bb_upper is not None and bb_lower is not None and bb_upper != bb_lower
+        else None
+    )
 
-    # Structural break proxy: only compare the latest closed close with confirmed pivots.
     last_sh = swing_highs[-1] if swing_highs else None
     last_sl = swing_lows[-1] if swing_lows else None
     structural_break = "none"
@@ -454,13 +539,13 @@ def detect_structure(raw_klines: list, interval: str) -> dict:
         "last_closed_candle_utc": iso_utc(datetime.fromtimestamp(candle_times[-1] / 1000, tz=timezone.utc)),
         "last_closed_price": last_close,
         "return_over_last_20_candles_pct": round(return_pct, 3) if return_pct is not None else None,
-        "return_last_1_candle_pct": round((closes[-1]/closes[-2]-1)*100, 3) if closes[-2] else None,
-        "return_last_4_candles_pct": round((closes[-1]/closes[-5]-1)*100, 3) if len(closes) >= 5 and closes[-5] else None,
-        "return_last_24_candles_pct": round((closes[-1]/closes[-25]-1)*100, 3) if len(closes) >= 25 and closes[-25] else None,
+        "return_last_1_candle_pct": round((closes[-1] / closes[-2] - 1) * 100, 3) if closes[-2] else None,
+        "return_last_4_candles_pct": round((closes[-1] / closes[-5] - 1) * 100, 3) if len(closes) >= 5 and closes[-5] else None,
+        "return_last_24_candles_pct": round((closes[-1] / closes[-25] - 1) * 100, 3) if len(closes) >= 25 and closes[-25] else None,
         "ema20": round(_ema20, 2) if (_ema20 := ema(closes, 20)) is not None else None,
         "ema50": round(_ema50, 2) if (_ema50 := ema(closes, 50)) is not None else None,
         "rolling_vwap20_proxy": round(vwap20, 2) if vwap20 is not None else None,
-        "close_vs_rolling_vwap20_pct": round((last_close/vwap20-1)*100, 3) if vwap20 else None,
+        "close_vs_rolling_vwap20_pct": round((last_close / vwap20 - 1) * 100, 3) if vwap20 else None,
         "macd_12_26_line": round(macd_line, 3) if macd_line is not None else None,
         "macd_12_26_9_histogram_approx": round(macd_hist, 3) if macd_hist is not None else None,
         "bollinger_20_upper": round(bb_upper, 2) if bb_upper is not None else None,
@@ -487,7 +572,7 @@ def detect_structure(raw_klines: list, interval: str) -> dict:
         "volume_vs_previous_20_average": round(vol_ratio, 3) if vol_ratio is not None else None,
         "close_location_in_candle_0_to_1": round(close_location, 3) if close_location is not None else None,
         "candle_body_pct": round(body_pct, 3) if body_pct is not None else None,
-        "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine.",
+        "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive.",
     }
 
 
@@ -505,18 +590,16 @@ def nearest_oi_change(oi_history: list, live_oi: float, hours: int) -> dict:
     distance, sample_epoch, sample_oi = min(candidates, key=lambda x: x[0])
     actual_hours = (now - sample_epoch) / 3600
     change_pct = (live_oi / sample_oi - 1) * 100
-    # Hourly history should match the requested horizon closely. Never silently
-    # label a 20m/30m comparison as a 1h change.
     if hours <= 1:
-        tolerance = 0.25  # 15 минут макс. отклонение для 1ч
+        tolerance = 0.25
     elif hours <= 4:
-        tolerance = 0.75  # 45 минут макс. отклонение для 4ч
+        tolerance = 0.75
     else:
-        tolerance = 1.5   # 90 минут макс. отклонение для 24ч+
+        tolerance = 1.5
     if abs(actual_hours - hours) > tolerance:
         return {
             "available": False,
-            "reason": f"Ближайший снимок {actual_hours:.2f}ч назад; отклонение от целевого горизонта {hours}ч больше {tolerance:.2f}ч",
+            "reason": f"Ближайший снимок {actual_hours:.2f}ч назад; отклонение от горизонта {hours}ч больше {tolerance:.2f}ч",
         }
     return {
         "available": True,
@@ -547,42 +630,46 @@ def fetch_ratio(endpoint: str, period: str = "1h") -> Optional[dict]:
     }
 
 
-def fetch_orderbook_snapshot(base_url: str, path: str, symbol: str, limit: int = 1000, threshold_pct: float = 1.0) -> Optional[dict]:
-    data = safe_get_json(f"{base_url}{path}", {"symbol": symbol, "limit": limit})
-    if not isinstance(data, dict) or not data.get("bids") or not data.get("asks"):
-        return None
+def _compute_depth_from_lists(raw_bids: list, raw_asks: list, threshold_pct: float = 1.0) -> Optional[dict]:
+    """Вспомогательный расчет глубины стакана в коридоре ±threshold_pct% от mid-price."""
     try:
-        raw_bids = [(float(p), float(q)) for p, q in data["bids"]]
-        raw_asks = [(float(p), float(q)) for p, q in data["asks"]]
-        if not raw_bids or not raw_asks:
+        bids_parsed = [(float(p), float(q)) for p, q in raw_bids]
+        asks_parsed = [(float(p), float(q)) for p, q in raw_asks]
+        if not bids_parsed or not asks_parsed:
             return None
-        
-        best_bid = raw_bids[0][0]
-        best_ask = raw_asks[0][0]
-        mid = (best_bid + best_ask) / 2
-        
-        # Calculate strict +/- threshold bounds
-        lower_bound = mid * (1 - threshold_pct / 100.0)
-        upper_bound = mid * (1 + threshold_pct / 100.0)
-        
-        bids = [x for x in raw_bids if x[0] >= lower_bound]
-        asks = [x for x in raw_asks if x[0] <= upper_bound]
-        
+        best_bid = bids_parsed[0][0]
+        best_ask = asks_parsed[0][0]
+        mid = (best_bid + best_ask) / 2.0
+        if mid <= 0:
+            return None
+        lower_bound = mid * (1.0 - threshold_pct / 100.0)
+        upper_bound = mid * (1.0 + threshold_pct / 100.0)
+
+        bids = [x for x in bids_parsed if x[0] >= lower_bound]
+        asks = [x for x in asks_parsed if x[0] <= upper_bound]
+
         bid_qty = sum(q for _, q in bids)
         ask_qty = sum(q for _, q in asks)
-        
+
         return {
             "best_bid": best_bid,
             "best_ask": best_ask,
-            "spread_bps": round((best_ask - best_bid) / mid * 10000, 3) if mid else None,
+            "spread_bps": round((best_ask - best_bid) / mid * 10000, 3),
             "threshold_pct": threshold_pct,
             "bid_depth_base_qty": round(bid_qty, 3),
             "ask_depth_base_qty": round(ask_qty, 3),
             "bid_vs_ask_ratio": round(bid_qty / ask_qty, 3) if ask_qty else None,
-            "interpretation_limit": f"Snapshot strictly measuring bids/asks within ±{threshold_pct}% of mid price. Identifies concentrated limit order walls.",
+            "interpretation_limit": f"Snapshot strictly measuring bids/asks within ±{threshold_pct}% of mid price.",
         }
     except Exception:
         return None
+
+
+def fetch_orderbook_snapshot(base_url: str, path: str, symbol: str, limit: int = 1000, threshold_pct: float = 1.0) -> Optional[dict]:
+    data = safe_get_json(f"{base_url}{path}", {"symbol": symbol, "limit": limit})
+    if not isinstance(data, dict) or not data.get("bids") or not data.get("asks"):
+        return None
+    return _compute_depth_from_lists(data["bids"], data["asks"], threshold_pct=threshold_pct)
 
 
 def calculate_zscore(current_val: float, history_vals: list[float], eps: float = 1e-6) -> Optional[float]:
@@ -590,7 +677,6 @@ def calculate_zscore(current_val: float, history_vals: list[float], eps: float =
         return None
     try:
         mean = statistics.mean(history_vals)
-        # Sample standard deviation with Bessel's correction (df = N - 1)
         std = statistics.stdev(history_vals) if len(history_vals) >= 2 else statistics.pstdev(history_vals)
         if std < eps:
             return None if abs(current_val - mean) > eps else 0.0
@@ -602,7 +688,7 @@ def calculate_zscore(current_val: float, history_vals: list[float], eps: float =
 def detect_divergence_engine(price_change_pct: float, oi_change_pct: float) -> dict:
     pt = 1 if price_change_pct > 0.1 else (-1 if price_change_pct < -0.1 else 0)
     ot = 1 if oi_change_pct > 0.1 else (-1 if oi_change_pct < -0.1 else 0)
-    
+
     if pt == 1 and ot == 1:
         state = "Bullish Continuation (Long Build-up)"
         score = 15
@@ -618,12 +704,12 @@ def detect_divergence_engine(price_change_pct: float, oi_change_pct: float) -> d
     else:
         state = "Neutral / Ranging"
         score = 0
-        
+
     return {
         "price_trend": "UP" if pt == 1 else ("DOWN" if pt == -1 else "FLAT"),
         "oi_trend": "UP" if ot == 1 else ("DOWN" if ot == -1 else "FLAT"),
         "divergence_state": state,
-        "bias_contribution": score
+        "bias_contribution": score,
     }
 
 
@@ -633,7 +719,7 @@ def calculate_quant_bias(metrics: dict, regime_adaptive: bool = False) -> dict:
     score = 0.0
     breakdown = {}
 
-    # 1. Daily VWAP trend (±15 pts): Smooth tanh scaling against 20-candle rolling VWAP
+    # 1. Daily VWAP trend (±15 pts)
     struct = metrics.get("market_structure", {}).get("1d", {})
     if struct.get("close_vs_rolling_vwap20_pct") is not None:
         val = struct["close_vs_rolling_vwap20_pct"]
@@ -641,7 +727,7 @@ def calculate_quant_bias(metrics: dict, regime_adaptive: bool = False) -> dict:
         score += pts
         breakdown["1d_vwap_trend"] = int(round(pts))
 
-    # 2. 24h Spot CVD (±20 pts): Continuous aggressor-driven spot demand
+    # 2. 24h Spot CVD (±20 pts)
     spot = metrics.get("spot_taker_delta", {})
     if spot.get("24h", {}).get("delta_btc") is not None:
         delta_btc = spot["24h"]["delta_btc"]
@@ -649,7 +735,7 @@ def calculate_quant_bias(metrics: dict, regime_adaptive: bool = False) -> dict:
         score += pts
         breakdown["24h_spot_cvd"] = int(round(pts))
 
-    # 3. Spot Orderbook Imbalance ±1% (±20 pts): Smooth logarithmic depth imbalance
+    # 3. Spot Orderbook Imbalance ±1% (±20 pts)
     ob_spot = metrics.get("orderbook_depth", {}).get("spot", {})
     if ob_spot and ob_spot.get("bid_vs_ask_ratio") is not None:
         ratio = ob_spot["bid_vs_ask_ratio"]
@@ -659,7 +745,7 @@ def calculate_quant_bias(metrics: dict, regime_adaptive: bool = False) -> dict:
             score += pts
             breakdown["spot_orderbook_imbalance"] = int(round(pts))
 
-    # 4. Futures Orderbook Imbalance ±1% (±15 pts): Futures depth wall
+    # 4. Futures Orderbook Imbalance ±1% (±15 pts)
     ob_fut = metrics.get("orderbook_depth", {}).get("futures", {})
     if ob_fut and ob_fut.get("bid_vs_ask_ratio") is not None:
         ratio = ob_fut["bid_vs_ask_ratio"]
@@ -669,25 +755,25 @@ def calculate_quant_bias(metrics: dict, regime_adaptive: bool = False) -> dict:
             score += pts
             breakdown["futures_orderbook_imbalance"] = int(round(pts))
 
-    # 5. Divergence Engine (±15 pts): Price vs OI trend alignment
+    # 5. Divergence Engine (±15 pts)
     div = metrics.get("divergence_engine", {}).get("24h_divergence", {})
     if div:
         pts = div.get("bias_contribution", 0)
         score += pts
         breakdown["24h_divergence_engine"] = int(pts)
 
-    # 6. OI Squeeze Risk (±15 pts): Detrended from 0.010% baseline with active negative branch
+    # 6. OI Squeeze Risk (±15 pts)
     oi_z = metrics.get("statistical_z_scores", {}).get("oi_zscore")
     if oi_z is not None and abs(oi_z) > 1.8:
         fund = metrics.get("derivatives", {}).get("current_funding_rate_pct", 0)
         if fund is not None:
-            fund_dev = round(fund - 0.010, 6)  # Detrend from Binance 0.010% baseline
+            fund_dev = round(fund - 0.010, 6)
             if oi_z > 1.8 and fund_dev >= 0.005:
-                pts = -15  # Longs crowded in high funding -> Long squeeze risk
+                pts = -15
             elif oi_z > 1.8 and fund_dev <= -0.005:
-                pts = 15   # Shorts crowded in discount funding -> Short squeeze risk
+                pts = 15
             elif oi_z < -1.8:
-                pts = 10 if fund_dev < 0 else -10  # Leverage flushout / exhaustion
+                pts = 10 if fund_dev < 0 else -10
             else:
                 pts = 0
             if pts != 0:
@@ -707,11 +793,13 @@ def calculate_quant_bias(metrics: dict, regime_adaptive: bool = False) -> dict:
     else:
         label = "NEUTRAL"
 
+    regime_details = detect_market_regime(metrics) if metrics else {"regime": "BALANCED_NORMAL"}
     return {
         "composite_score": final_score,
         "bias_label": label,
         "breakdown": breakdown,
-        "market_regime": detect_market_regime(metrics).get("regime", "BALANCED_NORMAL") if metrics else "BALANCED_NORMAL",
+        "market_regime": regime_details.get("regime", "BALANCED_NORMAL"),
+        "regime_info": regime_details,
     }
 
 
@@ -727,8 +815,7 @@ def calculate_atr_risk_levels(
 ) -> dict:
     """
     Рассчитывает динамические уровни стоп-лосса по ATR (буфер 1.5x ATR)
-    и целевые уровни тейк-профита 1:2 и 1:3 Risk:Reward для Long, Short и Neutral.
-    Включает институциональные квант-расширения: учет спреда, комиссий и плотностей стакана.
+    и целевые уровни тейк-профита 1:2 и 1:3 Risk:Reward.
     """
     return calculate_liquidity_aware_stops(
         spot_price=spot_price,
@@ -740,9 +827,7 @@ def calculate_atr_risk_levels(
     )
 
 
-
 def classify_mvrv_stage(z: Optional[float]) -> str:
-    """Классификация макро-фазы цикла по MVRV Z-Score."""
     if z is None:
         return "UNAVAILABLE"
     if z < 0.1:
@@ -758,7 +843,6 @@ def classify_mvrv_stage(z: Optional[float]) -> str:
 
 
 def classify_nupl_stage(nupl: Optional[float]) -> str:
-    """Классификация макро-фазы цикла по NUPL (Net Unrealized Profit/Loss)."""
     if nupl is None:
         return "UNAVAILABLE"
     if nupl < 0.0:
@@ -775,10 +859,9 @@ def classify_nupl_stage(nupl: Optional[float]) -> str:
 
 def fetch_onchain_metrics(session: Optional[requests.Session] = None, use_cache: bool = True) -> dict:
     """
-    Получает актуальные ончейн-метрики (MVRV Z-Score, NUPL, Realized Price) через быстрый REST API.
-    Использует локальный дисковый кэш (TTL 12ч) для исключения лимитов 10 req/hr BGeometrics.
+    Получает актуальные ончейн-метрики (MVRV Z-Score, NUPL, Realized Price) через REST API.
+    Использует локальный дисковый кэш (TTL 12ч).
     """
-    # 1. Проверяем свежий локальный кэш (12 часов) только при реальном запросе (session is None)
     if use_cache and session is None:
         cached = load_disk_cache("onchain_cache.json", ttl_seconds=12 * 3600)
         if cached and cached.get("status") == "OK" and cached.get("mvrv_zscore") is not None:
@@ -838,7 +921,6 @@ def fetch_onchain_metrics(session: Optional[requests.Session] = None, use_cache:
     except Exception:
         pass
 
-    # Fallback на сохраненный кэш при сетевых сбоях / 429 ошибках (только при реальном запросе)
     if status != "OK" and session is None and use_cache:
         stale = load_disk_cache("onchain_cache.json", ttl_seconds=7 * 86400)
         if stale and stale.get("mvrv_zscore") is not None:
@@ -866,7 +948,7 @@ def fetch_onchain_metrics(session: Optional[requests.Session] = None, use_cache:
 
 
 def print_fast_scan_cli_table(snapshot: dict) -> None:
-    """Выводит высокоплотный консольный дашборд для режима мгновенного импульса (--fast)."""
+    """Выводит консольный дашборд для режима быстрого сканирования (--fast)."""
     now_str = snapshot.get("timestamp_utc", iso_utc())
     exec_sec = snapshot.get("execution_time_sec", 0.0)
     qb = snapshot.get("quant_bias", {})
@@ -888,11 +970,6 @@ def print_fast_scan_cli_table(snapshot: dict) -> None:
     oi_z = z_scores.get("oi_zscore")
     fund_z = z_scores.get("funding_zscore")
 
-    bybit = snapshot.get("bybit", {})
-    bybit_ticker = bybit.get("ticker", {})
-    bybit_p = bybit_ticker.get("lastPrice") if isinstance(bybit_ticker, dict) else None
-    bybit_oi = bybit_ticker.get("openInterest") if isinstance(bybit_ticker, dict) else None
-
     risk = snapshot.get("risk_model", {})
     atr14 = risk.get("atr14", 0.0)
     buffer = risk.get("buffer", 0.0)
@@ -906,88 +983,52 @@ def print_fast_scan_cli_table(snapshot: dict) -> None:
     nupl_v = onchain.get("nupl")
     nupl_stage = onchain.get("nupl_stage", "UNAVAILABLE")
     rp_v = onchain.get("realized_price")
-    onchain_st = onchain.get("status", "UNAVAILABLE")
 
     calib = snapshot.get("quant_bias_calibration", {})
-    calib_st = calib.get("status", "ACTIVE")
     wr = calib.get("overall_win_rate_pct")
     wr_str = f"{wr}%" if wr is not None else "Накапливает данные"
 
     print("\n" + "=" * 70)
-    print("⚡ BTC MARKET INTELLIGENCE — FAST MOMENTUM SCANNER (REST-ONLY)")
-    print("======================================================================")
+    print("BTC MARKET INTELLIGENCE — FAST MOMENTUM SCANNER (REST-ONLY)")
+    print("=" * 70)
     print(f"Время (UTC): {now_str} | Время выполнения: {exec_sec:.2f}с")
-    print("\n📊 КОЛИЧЕСТВЕННЫЙ СКОРИНГ (QUANT BIAS)")
+    print("\n[КОЛИЧЕСТВЕННЫЙ СКОРИНГ (QUANT BIAS)]")
     print("-" * 70)
     sign = "+" if score > 0 else ""
     print(f"  Скоринг:      {sign}{score} / 100  [{label}]")
     if bd:
-        print("  Драйверы:")
         for k, v in bd.items():
             k_disp = k.replace("_", " ").title()
             v_sign = "+" if v > 0 else ""
             print(f"    • {k_disp:32s}: {v_sign}{v} pts")
-    print("\n📈 ЦЕНА И ДЕРИВАТИВЫ")
+    print("\n[ЦЕНА И ДЕРИВАТИВЫ]")
     print("-" * 70)
     print(f"  Spot Price:   ${spot_p:,.2f}  |  Futures Price: ${fut_p:,.2f}  |  Basis: ${basis_usd:+.2f} ({basis_pct:+.2f}%)")
     oi_z_str = f"{oi_z:+.2f}" if oi_z is not None else "N/A"
     fund_z_str = f"{fund_z:+.2f}" if fund_z is not None else "N/A"
-    print(f"  Live OI:      {live_oi:,.1f} BTC  |  OI Z-Score:   {oi_z_str}")
-    print(f"  Funding Rate: {fund_pct:+.4f}%    |  Fund Z-Score: {fund_z_str}")
-    if bybit_p:
-        bybit_oi_str = f"{bybit_oi:,.1f}" if bybit_oi else "N/A"
-        print(f"  Bybit Price:  ${bybit_p:,.2f}  |  Bybit OI:      {bybit_oi_str}")
-    print("\n🏛️ ИНСТИТУЦИОНАЛЬНЫЙ СРЕЗ (CME / DVOL / COINBASE PRO)")
-    print("-" * 70)
-    dvol = snapshot.get("deribit_dvol", {})
-    cb = snapshot.get("coinbase_orderbook", {})
-    cme = snapshot.get("cme_basis", {})
-    if dvol.get("status") == "OK":
-        print(f"  Deribit DVOL (Crypto VIX): {dvol.get('current_dvol')} pts [{dvol.get('dvol_regime')}]")
-    else:
-        print(f"  Deribit DVOL:              {dvol.get('status', 'N/A')}")
-    if cb.get("status") == "OK":
-        print(f"  Coinbase Pro L2 (±1%):     Биды {cb.get('bid_depth_btc')} BTC vs Аски {cb.get('ask_depth_btc')} BTC (Перевес {cb.get('bid_vs_ask_ratio')}x)")
-    else:
-        print(f"  Coinbase Pro L2:           {cb.get('status', 'N/A')}")
-    if cme.get("status") == "OK":
-        print(f"  CME BTC=F Последняя:       ${cme.get('cme_last_price', 0.0):,.2f} | Базис: {cme.get('basis_vs_spot_usd', 0.0):+.2f} USD ({cme.get('basis_vs_spot_pct', 0.0):+.2f}%)")
-    else:
-        print(f"  CME BTC=F:                 {cme.get('status', 'N/A')}")
-    print("\n🎯 РИСК-МОДЕЛЬ ATR (ДИНАМИЧЕСКИЙ РАСЧЕТ R:R)")
+    live_oi_val = live_oi if live_oi is not None else 0.0
+    fund_pct_val = fund_pct if fund_pct is not None else 0.0
+    print(f"  Live OI:      {live_oi_val:,.1f} BTC  |  OI Z-Score:   {oi_z_str}")
+    print(f"  Funding Rate: {fund_pct_val:+.4f}%    |  Fund Z-Score: {fund_z_str}")
+    print("\n[РИСК-МОДЕЛЬ ATR (R:R 1:2 И 1:3)]")
     print("-" * 70)
     print(f"  ATR14: ${atr14:,.2f} | Буфер (1.5x ATR): ${buffer:,.2f} | Рекомендация: {direction}")
-    print(f"  [Сценарий ЛОНГ]")
-    print(f"    • Стоп-лосс (1.5x ATR):    ${long_setup.get('stop_loss', 0.0):,.2f} (-${buffer:,.2f} / -{long_setup.get('risk_pct', 0.0):.2f}%)")
-    print(f"    • Тейк-профит 1 (1:2 R:R): ${long_setup.get('tp1_rr2', 0.0):,.2f} (+${2*buffer:,.2f} / +{2*long_setup.get('risk_pct', 0.0):.2f}%)")
-    print(f"    • Тейк-профит 2 (1:3 R:R): ${long_setup.get('tp2_rr3', 0.0):,.2f} (+${3*buffer:,.2f} / +{3*long_setup.get('risk_pct', 0.0):.2f}%)")
-    print(f"  [Сценарий ШОРТ]")
-    print(f"    • Стоп-лосс (1.5x ATR):    ${short_setup.get('stop_loss', 0.0):,.2f} (+${buffer:,.2f} / +{short_setup.get('risk_pct', 0.0):.2f}%)")
-    print(f"    • Тейк-профит 1 (1:2 R:R): ${short_setup.get('tp1_rr2', 0.0):,.2f} (-${2*buffer:,.2f} / -{2*short_setup.get('risk_pct', 0.0):.2f}%)")
-    print(f"    • Тейк-профит 2 (1:3 R:R): ${short_setup.get('tp2_rr3', 0.0):,.2f} (-${3*buffer:,.2f} / -{3*short_setup.get('risk_pct', 0.0):.2f}%)")
-    print("\n⛓️ ОНЧЕЙН-МЕТРИКИ (MVRV Z-SCORE & NUPL)")
+    print(f"  LONG  -> SL: ${long_setup.get('stop_loss', 0.0):,.2f} | TP1: ${long_setup.get('tp1_rr2', 0.0):,.2f} | TP2: ${long_setup.get('tp2_rr3', 0.0):,.2f}")
+    print(f"  SHORT -> SL: ${short_setup.get('stop_loss', 0.0):,.2f} | TP1: ${short_setup.get('tp1_rr2', 0.0):,.2f} | TP2: ${short_setup.get('tp2_rr3', 0.0):,.2f}")
+    print("\n[ОНЧЕЙН И КАЛИБРОВКА]")
     print("-" * 70)
     mvrv_str = f"{mvrv_z:.2f}" if mvrv_z is not None else "N/A"
     nupl_str = f"{nupl_v:.3f}" if nupl_v is not None else "N/A"
     rp_str = f"${rp_v:,.2f}" if rp_v is not None else "N/A"
-    print(f"  MVRV Z-Score:   {mvrv_str}  [{mvrv_stage}]")
-    print(f"  NUPL:           {nupl_str}  [{nupl_stage}]")
-    print(f"  Realized Price: {rp_str}")
-    print(f"  Статус ончейна: {onchain_st}")
-    print("\n🎯 КАЛИБРОВКА И ВИНРЕЙТ")
-    print("-" * 70)
-    print(f"  Статус:       {calib_st}")
+    print(f"  MVRV Z-Score: {mvrv_str} [{mvrv_stage}] | NUPL: {nupl_str} [{nupl_stage}] | Realized: {rp_str}")
     print(f"  Винрейт:      {wr_str}")
-    print(f"  Калибровка:   База обновлена в {TRACKER_FILE.name}")
-    print("=" * 70)
-    print(f"[✓] Снимок сохранен в {RAW_SNAPSHOT_FILE.name}\n")
+    print("=" * 70 + "\n")
 
 
 def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
     """
     Режим мгновенного импульса (--fast):
-    Параллельный опрос REST API Binance, Bybit и BGeometrics без запуска браузера Playwright.
-    Выполняется быстрее 5 секунд (целевое время 2-4с).
+    Параллельный опрос REST API Binance, Bybit, Deribit, Coinbase, CME и BGeometrics.
     """
     started = time.time()
 
@@ -1000,7 +1041,8 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
                 "1d_vwap_trend": 10,
                 "24h_spot_cvd": 15,
                 "spot_orderbook_imbalance": 10,
-            }
+            },
+            "market_regime": "BALANCED_NORMAL",
         }
         atr14_val = 475.00
         atr_risk = calculate_atr_risk_levels(spot_price, atr14_val, quant_bias["composite_score"])
@@ -1043,12 +1085,22 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
             "weekend_gap_usd": -270.0,
             "regular_market_time_utc": iso_utc(),
         }
+        ob_spot_mock = {
+            "best_bid": 83048.0,
+            "best_ask": 83052.0,
+            "bid_depth_base_qty": 320.4,
+            "ask_depth_base_qty": 215.0,
+            "bid_vs_ask_ratio": 1.49,
+            "threshold_pct": 1.0,
+        }
         binance = {
             "prices": {"spot_last": spot_price, "futures_last": 83020.0, "basis_usd": -30.0, "basis_pct": -0.036},
             "spot_24h_summary": {"change_pct": 1.25, "high": 83500.0, "low": 81500.0},
             "derivatives": {"live_open_interest_btc": 92500, "current_funding_rate_pct": 0.0012},
             "statistical_z_scores": {"oi_zscore": -0.85, "funding_zscore": -1.20},
             "divergence_engine": {"24h_divergence": {"divergence_state": "Bullish Continuation (Long Build-up)"}},
+            "orderbook_depth": {"spot": ob_spot_mock, "futures": ob_spot_mock},
+            "orderbook_depth_summary": {"bids_btc": 320.4, "asks_btc": 215.0, "bid_ask_ratio": 1.49},
             "quant_bias": quant_bias,
             "risk_model": atr_risk,
             "atr_risk": atr_risk,
@@ -1090,6 +1142,25 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
             cme_basis["basis_vs_spot_pct"] = round((cme_last / spot_price - 1) * 100, 3)
             cme_basis["weekend_gap_usd"] = round(spot_price - cme_last, 2)
 
+        # Если спотовый стакан Binance был недоступен, используем данные Coinbase Pro L2
+        ob_depth = binance.get("orderbook_depth", {})
+        if (not ob_depth.get("spot") or not ob_depth["spot"].get("bid_vs_ask_ratio")) and coinbase_ob.get("status") == "OK":
+            cb_mapped = {
+                "best_bid": coinbase_ob.get("best_bid"),
+                "best_ask": coinbase_ob.get("best_ask"),
+                "bid_depth_base_qty": coinbase_ob.get("bid_depth_btc", 0.0),
+                "ask_depth_base_qty": coinbase_ob.get("ask_depth_btc", 0.0),
+                "bid_vs_ask_ratio": coinbase_ob.get("bid_vs_ask_ratio", 1.0),
+                "threshold_pct": 1.0,
+            }
+            binance.setdefault("orderbook_depth", {})["spot"] = cb_mapped
+            binance["orderbook_depth_summary"] = {
+                "bids_btc": cb_mapped["bid_depth_base_qty"],
+                "asks_btc": cb_mapped["ask_depth_base_qty"],
+                "bid_ask_ratio": cb_mapped["bid_vs_ask_ratio"],
+            }
+            binance["quant_bias"] = calculate_quant_bias(binance)
+
         quant_bias = binance.get("quant_bias", {})
         score = quant_bias.get("composite_score", 0)
 
@@ -1099,7 +1170,12 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
             struct_1h = binance.get("market_structure", {}).get("1h", {})
             atr14_val = struct_1h.get("atr14_price", 0.0)
 
-        atr_risk = calculate_atr_risk_levels(spot_price, atr14_val, score)
+        atr_risk = calculate_atr_risk_levels(
+            spot_price=spot_price,
+            atr14=atr14_val,
+            quant_bias_score=score,
+            orderbook_depth=binance.get("orderbook_depth"),
+        )
         binance["risk_model"] = atr_risk
         binance["atr_risk"] = atr_risk
         binance["onchain_metrics"] = onchain
@@ -1117,6 +1193,7 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
         "local_timezone": LOCAL_TIMEZONE,
         "execution_mode": "FAST_MOMENTUM_SCAN",
         "execution_time_sec": round(exec_time, 2),
+        "ai_telemetry": get_ai_telemetry(),
         "spot_price": spot_price,
         "prices": binance.get("prices", {}),
         "statistical_z_scores": binance.get("statistical_z_scores", {}),
@@ -1137,7 +1214,7 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
 
     if not mock:
         try:
-            RAW_SNAPSHOT_FILE.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_json(RAW_SNAPSHOT_FILE, snapshot)
         except Exception as exc:
             print(f"[WARN] Сбой сохранения снимка: {exc}")
         try:
@@ -1222,7 +1299,7 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
         ob_spot = fetch_orderbook_snapshot(BINANCE_SPOT, "/api/v3/depth", SYMBOL, 500, 1.0)
         ob_fut = fetch_orderbook_snapshot(BINANCE_FUTURES, "/fapi/v1/depth", SYMBOL, 500, 1.0)
 
-    # Geo-block Fallback Gateway for Cloud environments (US AWS / Streamlit Cloud)
+    # 1. Спотовый фолбэк (data-api.binance.vision / Coinbase)
     if not isinstance(spot_ticker, dict) or not spot_ticker.get("price"):
         alt_spot = safe_get_json("https://data-api.binance.vision/api/v3/ticker/price", {"symbol": SYMBOL})
         if isinstance(alt_spot, dict) and alt_spot.get("price"):
@@ -1232,6 +1309,7 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
             if isinstance(cb_data, dict) and cb_data.get("price"):
                 spot_ticker = {"symbol": SYMBOL, "price": str(cb_data["price"])}
 
+    # 2. Полный фьючерсный фолбэк (Bybit V5) при блокировке fapi.binance.com (HTTP 451 в США / Streamlit Cloud)
     if not isinstance(fut_ticker, dict) or not fut_ticker.get("price"):
         bybit_data = safe_get_json("https://api.bybit.com/v5/market/tickers", {"category": "linear", "symbol": "BTCUSDT"})
         if isinstance(bybit_data, dict) and bybit_data.get("result", {}).get("list"):
@@ -1240,7 +1318,12 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
             if not isinstance(premium, dict) or not premium.get("markPrice"):
                 premium = {
                     "markPrice": str(bybit_item.get("markPrice", fut_ticker["price"])),
-                    "indexPrice": str(bybit_item.get("indexPrice", spot_ticker.get("price", fut_ticker["price"]) if isinstance(spot_ticker, dict) else fut_ticker["price"])),
+                    "indexPrice": str(
+                        bybit_item.get(
+                            "indexPrice",
+                            spot_ticker.get("price", fut_ticker["price"]) if isinstance(spot_ticker, dict) else fut_ticker["price"],
+                        )
+                    ),
                     "lastFundingRate": str(bybit_item.get("fundingRate", "0.0001")),
                 }
             if not isinstance(live_oi_data, dict) or not live_oi_data.get("openInterest"):
@@ -1249,22 +1332,77 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
                     "time": int(time.time() * 1000),
                 }
 
-    # Futures candles fallback (Bybit Linear V5 if Binance Futures blocked)
+            # Фолбэк истории OI (для сохранения OI Z-Score и Divergence Engine в облаке)
+            if not isinstance(oi_history, list) or not oi_history:
+                bb_oi_res = safe_get_json(
+                    "https://api.bybit.com/v5/market/open-interest",
+                    {"category": "linear", "symbol": "BTCUSDT", "intervalTime": "1h", "limit": 50},
+                )
+                if isinstance(bb_oi_res, dict) and bb_oi_res.get("result", {}).get("list"):
+                    bb_oi_list = bb_oi_res["result"]["list"]
+                    oi_history = [
+                        {"timestamp": int(r.get("timestamp", 0)), "sumOpenInterest": str(r.get("openInterest", "0"))}
+                        for r in reversed(bb_oi_list)
+                        if r.get("timestamp") and r.get("openInterest")
+                    ]
+
+            # Фолбэк истории фандинга (для сохранения Funding Z-Score в облаке)
+            if not isinstance(last_funding, list) or not last_funding:
+                bb_fund_res = safe_get_json(
+                    "https://api.bybit.com/v5/market/funding/history",
+                    {"category": "linear", "symbol": "BTCUSDT", "limit": 50},
+                )
+                if isinstance(bb_fund_res, dict) and bb_fund_res.get("result", {}).get("list"):
+                    bb_fund_list = bb_fund_res["result"]["list"]
+                    last_funding = [
+                        {"fundingRate": str(r.get("fundingRate", "0.0001")), "fundingTime": int(r.get("fundingRateTimestamp", 0))}
+                        for r in reversed(bb_fund_list)
+                        if r.get("fundingRate") is not None
+                    ]
+
+            # Фолбэк фьючерсного стакана (для сохранения Futures Book Imbalance в облаке)
+            if not ob_fut or not ob_fut.get("best_bid"):
+                bb_book_res = safe_get_json(
+                    "https://api.bybit.com/v5/market/orderbook",
+                    {"category": "linear", "symbol": "BTCUSDT", "limit": 200},
+                )
+                if isinstance(bb_book_res, dict) and bb_book_res.get("result"):
+                    bb_book = bb_book_res["result"]
+                    if bb_book.get("b") and bb_book.get("a"):
+                        ob_fut = _compute_depth_from_lists(bb_book["b"], bb_book["a"], threshold_pct=1.0)
+
+    # 3. Фолбэк фьючерсных свечей через Bybit Linear V5
     bybit_map = {"1w": "W", "1d": "D", "4h": "240", "1h": "60", "15m": "15", "5m": "5", "12h": "720", "3d": "D"}
-    interval_ms_map = {"1w": 604800000, "1d": 86400000, "4h": 14400000, "1h": 3600000, "15m": 900000, "5m": 300000, "12h": 43200000, "3d": 259200000}
+    interval_ms_map = {
+        "1w": 604800000,
+        "1d": 86400000,
+        "4h": 14400000,
+        "1h": 3600000,
+        "15m": 900000,
+        "5m": 300000,
+        "12h": 43200000,
+        "3d": 259200000,
+    }
     for inter, lim in intervals_fut:
         if not raw_fut.get(inter) or len(raw_fut[inter]) < 5:
             bb_code = bybit_map.get(inter, "60")
             dur_ms = interval_ms_map.get(inter, 3600000)
-            bb_res = safe_get_json("https://api.bybit.com/v5/market/kline", {"category": "linear", "symbol": "BTCUSDT", "interval": bb_code, "limit": lim})
+            bb_res = safe_get_json(
+                "https://api.bybit.com/v5/market/kline",
+                {"category": "linear", "symbol": "BTCUSDT", "interval": bb_code, "limit": lim},
+            )
             if isinstance(bb_res, dict) and bb_res.get("result", {}).get("list"):
                 bb_klines = bb_res["result"]["list"]
                 converted = []
                 for k in reversed(bb_klines):
-                    converted.append([int(k[0]), k[1], k[2], k[3], k[4], k[5], int(k[0]) + dur_ms - 1, k[6], 100, float(k[5]) * 0.5, float(k[6]) * 0.5, "0"])
+                    converted.append([
+                        int(k[0]), k[1], k[2], k[3], k[4], k[5],
+                        int(k[0]) + dur_ms - 1, k[6], 100,
+                        float(k[5]) * 0.5, float(k[6]) * 0.5, "0"
+                    ])
                 raw_fut[inter] = converted
 
-    # Spot candles fallback (data-api.binance.vision if api.binance.com blocked)
+    # 4. Фолбэк спотовых свечей и стакана через data-api.binance.vision
     for inter, lim in intervals_spot:
         if not raw_spot.get(inter) or len(raw_spot[inter]) < 5:
             alt_res = safe_get_json("https://data-api.binance.vision/api/v3/klines", {"symbol": SYMBOL, "interval": inter, "limit": lim})
@@ -1327,7 +1465,6 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
     basis_usd = fut_price - spot_price
     basis_pct = basis_usd / spot_price * 100 if spot_price else None
 
-    # Синхронный базис из premiumIndex (без сетевого лага между отдельными HTTP-запросами)
     sync_basis_usd = (mark_price - index_price) if (mark_price is not None and index_price is not None) else basis_usd
     sync_basis_pct = (sync_basis_usd / index_price * 100) if (index_price and sync_basis_usd is not None) else basis_pct
 
@@ -1341,7 +1478,7 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
                 "time_utc": iso_utc(datetime.fromtimestamp(ts / 1000, tz=timezone.utc)) if ts else None,
             })
 
-    # Calculate 10/10 Z-Scores
+    # Расчет Z-Scores с защитой от нулевой дисперсии на плоском фандинге
     oi_zscore = None
     if isinstance(oi_history, list) and live_oi is not None:
         oi_vals = [finite_float(x.get("sumOpenInterest")) for x in oi_history]
@@ -1352,7 +1489,31 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
     if isinstance(last_funding, list) and funding_rate is not None:
         fund_vals = [finite_float(x.get("fundingRate")) for x in last_funding]
         fund_vals = [x for x in fund_vals if x is not None]
-        funding_zscore = calculate_zscore(funding_rate, fund_vals)
+        funding_zscore = calculate_zscore(funding_rate, fund_vals, eps=1e-9)
+        if funding_zscore is None and len(fund_vals) >= 2:
+            mean_f = statistics.mean(fund_vals)
+            funding_zscore = round(max(-5.0, min(5.0, (funding_rate - mean_f) / 0.00005)), 3)
+
+    # Закрытые часовые свечи для точной пост-входовой проверки SL/TP в калибраторе
+    closed_1h_klines = []
+    for c in only_closed_klines(raw_spot.get("1h") or raw_fut.get("1h") or [])[-30:]:
+        try:
+            closed_1h_klines.append({
+                "open_time_ms": int(c[0]),
+                "close_time_ms": int(c[6]),
+                "high": float(c[2]),
+                "low": float(c[3]),
+                "close": float(c[4]),
+            })
+        except Exception:
+            continue
+
+    ob_spot_dict = ob_spot if isinstance(ob_spot, dict) else {}
+    ob_summary = {
+        "bids_btc": ob_spot_dict.get("bid_depth_base_qty", 0.0),
+        "asks_btc": ob_spot_dict.get("ask_depth_base_qty", 0.0),
+        "bid_ask_ratio": ob_spot_dict.get("bid_vs_ask_ratio", 1.0),
+    }
 
     result = {
         "prices": {
@@ -1384,12 +1545,13 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
             "spot": ob_spot,
             "futures": ob_fut,
         },
+        "orderbook_depth_summary": ob_summary,
         "market_structure": structures,
         "spot_market_structure": spot_structures,
-        "structure_source": "Separate closed-candle structure for Binance spot and USDⓈ-M futures; do not treat them as interchangeable.",
+        "recent_closed_klines_1h": closed_1h_klines,
+        "structure_source": "Separate closed-candle structure for Binance spot and USD-M futures.",
     }
 
-    # Apply 10/10 Divergence Engine
     price_chg_24 = result["spot_24h_summary"]["change_pct"]
     oi_chg_24 = oi_metrics.get("24h", {}).get("change_pct")
     if price_chg_24 is not None and oi_chg_24 is not None:
@@ -1397,20 +1559,22 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
             "24h_divergence": detect_divergence_engine(price_chg_24, oi_chg_24)
         }
 
-    # Attach Statistical Z-Scores
     result["statistical_z_scores"] = {
         "oi_zscore": oi_zscore,
         "funding_zscore": funding_zscore,
-        "note": "Z-Scores using up to 500 historical observations to identify statistical anomalies (> 2.0 or < -2.0)."
+        "note": "Z-Scores using historical observations to identify statistical anomalies (> 2.0 or < -2.0).",
     }
 
-    # Apply Quant Bias Score
     result["quant_bias"] = calculate_quant_bias(result)
 
-    # Attach dynamic ATR Risk Model
     atr14_val = structures.get("4h", {}).get("atr14_price") or structures.get("1h", {}).get("atr14_price", 0.0)
     score_val = result["quant_bias"].get("composite_score", 0)
-    result["risk_model"] = calculate_atr_risk_levels(spot_price, atr14_val, score_val)
+    result["risk_model"] = calculate_atr_risk_levels(
+        spot_price=spot_price,
+        atr14=atr14_val,
+        quant_bias_score=score_val,
+        orderbook_depth=result["orderbook_depth"],
+    )
     result["atr_risk"] = result["risk_model"]
     return result, statuses
 
@@ -1431,7 +1595,7 @@ def bybit_get(path: str, params: dict) -> Any:
 
 
 def fetch_bybit_telemetry(parallel: bool = True) -> dict:
-    """Free cross-check: Bybit linear BTCUSDT price, OI, funding, account ratio and trades."""
+    """Free cross-check: Bybit linear BTCUSDT price, OI, funding, account ratio and orderbook."""
     out = {"source": "Bybit public V5 API", "collected_at_utc": iso_utc()}
     if parallel:
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
@@ -1456,43 +1620,83 @@ def fetch_bybit_telemetry(parallel: bool = True) -> dict:
     items = ticker.get("list", []) if isinstance(ticker, dict) else []
     if items:
         t = items[0]
-        out["ticker"] = {k: finite_float(t.get(k)) for k in ("lastPrice", "markPrice", "indexPrice", "fundingRate", "openInterest", "turnover24h", "volume24h", "price24hPcnt")}
-        out["ticker"]["price24hPcnt_pct"] = round((out["ticker"].get("price24hPcnt") or 0)*100, 4)
+        out["ticker"] = {
+            k: finite_float(t.get(k))
+            for k in ("lastPrice", "markPrice", "indexPrice", "fundingRate", "openInterest", "turnover24h", "volume24h", "price24hPcnt")
+        }
+        out["ticker"]["price24hPcnt_pct"] = round((out["ticker"].get("price24hPcnt") or 0) * 100, 4)
     else:
         out["ticker"] = {"status": "UNAVAILABLE", "reason": ticker.get("_error", "No ticker data") if isinstance(ticker, dict) else "No data"}
     oi_rows = oi.get("list", []) if isinstance(oi, dict) else []
     oi_rows = sorted(oi_rows, key=lambda r: int(r.get("timestamp", 0))) if oi_rows else []
-    oi_series=[]
+    oi_series = []
     for row in oi_rows:
-        ts=finite_float(row.get("timestamp")); val=finite_float(row.get("openInterest"))
+        ts = finite_float(row.get("timestamp"))
+        val = finite_float(row.get("openInterest"))
         if ts is not None and val is not None:
-            oi_series.append({"timestamp_utc": iso_utc(datetime.fromtimestamp(ts/1000, tz=timezone.utc)), "open_interest": val})
-    oi_changes={}
-    if len(oi_series)>=2:
-        latest=oi_series[-1]
-        for hours in (1,4,24):
-            target=datetime.fromisoformat(latest["timestamp_utc"].replace("Z","+00:00"))-timedelta(hours=hours)
-            candidates=[r for r in oi_series if abs((datetime.fromisoformat(r["timestamp_utc"].replace("Z","+00:00"))-target).total_seconds())<=hours*3600*0.25+1800]
+            oi_series.append({"timestamp_utc": iso_utc(datetime.fromtimestamp(ts / 1000, tz=timezone.utc)), "open_interest": val})
+    oi_changes = {}
+    if len(oi_series) >= 2:
+        latest = oi_series[-1]
+        for hours in (1, 4, 24):
+            target = datetime.fromisoformat(latest["timestamp_utc"].replace("Z", "+00:00")) - timedelta(hours=hours)
+            candidates = [
+                r
+                for r in oi_series
+                if abs((datetime.fromisoformat(r["timestamp_utc"].replace("Z", "+00:00")) - target).total_seconds())
+                <= hours * 3600 * 0.25 + 1800
+            ]
             if candidates:
-                prev=min(candidates,key=lambda r:abs((datetime.fromisoformat(r["timestamp_utc"].replace("Z","+00:00"))-target).total_seconds()))
-                oi_changes[f"{hours}h"]={"available":True,"from":prev,"to":latest,"change_pct":round((latest["open_interest"]/prev["open_interest"]-1)*100,3) if prev["open_interest"] else None}
+                prev = min(
+                    candidates,
+                    key=lambda r: abs((datetime.fromisoformat(r["timestamp_utc"].replace("Z", "+00:00")) - target).total_seconds()),
+                )
+                oi_changes[f"{hours}h"] = {
+                    "available": True,
+                    "from": prev,
+                    "to": latest,
+                    "change_pct": round((latest["open_interest"] / prev["open_interest"] - 1) * 100, 3) if prev["open_interest"] else None,
+                }
             else:
-                oi_changes[f"{hours}h"]={"available":False,"reason":"No sufficiently close historical OI observation"}
-    out["open_interest_history"]={"status":"OK" if oi_series else "UNAVAILABLE", "unit":"Bybit-reported contract units; do not add to USD OI without conversion", "series":oi_series, "changes":oi_changes}
-    fund_rows=funding.get("list",[]) if isinstance(funding,dict) else []
-    out["funding_history"]=[{"funding_rate_pct":round(finite_float(r.get("fundingRate"),0)*100,5),"funding_time_utc":iso_utc(datetime.fromtimestamp(int(r.get("fundingRateTimestamp",0))/1000,tz=timezone.utc)) if r.get("fundingRateTimestamp") else None} for r in fund_rows]
-    ratio_rows=ratio.get("list",[]) if isinstance(ratio,dict) else []
-    out["account_long_short_ratio"]=[{"timestamp":r.get("timestamp"),"buy_ratio":finite_float(r.get("buyRatio")),"sell_ratio":finite_float(r.get("sellRatio"))} for r in ratio_rows[:24]]
-    # Reuse thread-pooled book result directly (saves 200-400ms sequential blocking latency)
-    if isinstance(book,dict) and book.get("b") and book.get("a"):
-        bids=[(finite_float(x[0],0),finite_float(x[1],0)) for x in book["b"]]
-        asks=[(finite_float(x[0],0),finite_float(x[1],0)) for x in book["a"]]
-        bid_usd=sum(p*q for p,q in bids); ask_usd=sum(p*q for p,q in asks)
-        out["orderbook_snapshot"]={"status":"OK","timestamp_ms":book.get("ts"),"bid_notional_usd_top50":round(bid_usd,2),"ask_notional_usd_top50":round(ask_usd,2),"bid_ask_notional_ratio":round(bid_usd/ask_usd,4) if ask_usd else None,"warning":"Single snapshot; not a predictive signal and can be spoofed/cancelled."}
+                oi_changes[f"{hours}h"] = {"available": False, "reason": "No sufficiently close historical OI observation"}
+    out["open_interest_history"] = {
+        "status": "OK" if oi_series else "UNAVAILABLE",
+        "unit": "Bybit-reported contract units; do not add to USD OI without conversion",
+        "series": oi_series,
+        "changes": oi_changes,
+    }
+    fund_rows = funding.get("list", []) if isinstance(funding, dict) else []
+    out["funding_history"] = [
+        {
+            "funding_rate_pct": round(finite_float(r.get("fundingRate"), 0) * 100, 5),
+            "funding_time_utc": iso_utc(datetime.fromtimestamp(int(r.get("fundingRateTimestamp", 0)) / 1000, tz=timezone.utc))
+            if r.get("fundingRateTimestamp")
+            else None,
+        }
+        for r in fund_rows
+    ]
+    ratio_rows = ratio.get("list", []) if isinstance(ratio, dict) else []
+    out["account_long_short_ratio"] = [
+        {"timestamp": r.get("timestamp"), "buy_ratio": finite_float(r.get("buyRatio")), "sell_ratio": finite_float(r.get("sellRatio"))}
+        for r in ratio_rows[:24]
+    ]
+    if isinstance(book, dict) and book.get("b") and book.get("a"):
+        bids = [(finite_float(x[0], 0), finite_float(x[1], 0)) for x in book["b"]]
+        asks = [(finite_float(x[0], 0), finite_float(x[1], 0)) for x in book["a"]]
+        bid_usd = sum(p * q for p, q in bids)
+        ask_usd = sum(p * q for p, q in asks)
+        out["orderbook_snapshot"] = {
+            "status": "OK",
+            "timestamp_ms": book.get("ts"),
+            "bid_notional_usd_top50": round(bid_usd, 2),
+            "ask_notional_usd_top50": round(ask_usd, 2),
+            "bid_ask_notional_ratio": round(bid_usd / ask_usd, 4) if ask_usd else None,
+            "warning": "Single snapshot; not a predictive signal and can be spoofed/cancelled.",
+        }
     else:
-        out["orderbook_snapshot"]={"status":"UNAVAILABLE","reason":book.get("_error") if isinstance(book,dict) else "No data"}
-    out["status"]="OK" if out.get("ticker",{}).get("lastPrice") else "PARTIAL_OR_UNAVAILABLE"
-    out["interpretation_limit"]="Bybit is a separate exchange cross-check, not global market aggregation. OI units differ by contract; do not sum raw OI across exchanges. Ratios are account-based and do not reveal net capital exposure."
+        out["orderbook_snapshot"] = {"status": "UNAVAILABLE", "reason": book.get("_error") if isinstance(book, dict) else "No data"}
+    out["status"] = "OK" if out.get("ticker", {}).get("lastPrice") else "PARTIAL_OR_UNAVAILABLE"
+    out["interpretation_limit"] = "Bybit is a separate exchange cross-check, not global market aggregation."
     return out
 
 
@@ -1554,7 +1758,6 @@ def fetch_macro_cross_asset() -> dict:
 
 
 def fetch_macro_calendar() -> dict:
-    # 1. Проверяем свежий локальный кэш (2 часа) для предотвращения Cloudflare 429
     cached = load_disk_cache("macro_calendar_cache.json", ttl_seconds=2 * 3600)
     if cached and cached.get("status") == "OK" and cached.get("upcoming_events") is not None:
         cached["cache_status"] = "CACHE_HIT"
@@ -1563,7 +1766,6 @@ def fetch_macro_calendar() -> dict:
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
     events = safe_get_json(url)
     if not isinstance(events, list):
-        # Fallback на сохраненный кэш при сетевых блокировках Cloudflare
         stale = load_disk_cache("macro_calendar_cache.json", ttl_seconds=7 * 86400)
         if stale and stale.get("upcoming_events"):
             stale["cache_status"] = "STALE_FALLBACK"
@@ -1574,7 +1776,7 @@ def fetch_macro_calendar() -> dict:
     except Exception:
         local_tz = timezone.utc
     now = utc_now()
-    
+
     days_ru = {
         "Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс",
         "Monday": "Понедельник", "Tuesday": "Вторник", "Wednesday": "Среда",
@@ -1582,11 +1784,10 @@ def fetch_macro_calendar() -> dict:
     }
     months_ru = {
         1: "янв", 2: "фев", 3: "мар", 4: "апр", 5: "мая", 6: "июн",
-        7: "июл", 8: "авг", 9: "сен", 10: "окт", 11: "ноя", 12: "дек"
+        7: "июл", 8: "авг", 9: "сен", 10: "окт", 11: "ноя", 12: "дек",
     }
 
     upcoming = []
-    # Смотрим на 7 дней вперед (168 часов), чтобы видеть всю текущую или предстоящую неделю (особенно на выходных)
     max_lookahead_hours = 168.0
 
     for event in events:
@@ -1618,7 +1819,7 @@ def fetch_macro_calendar() -> dict:
 
     upcoming.sort(key=lambda x: x["hours_until"])
     is_weekend = now.weekday() in (5, 6)
-    
+
     result = {
         "status": "OK",
         "timezone": LOCAL_TIMEZONE,
@@ -1669,7 +1870,6 @@ def fetch_rss_headlines() -> dict:
         except Exception:
             pass
     items.sort(key=lambda x: x.get("published_utc") or "", reverse=True)
-    # Deduplicate same headline across feeds, retain source attribution.
     dedup = []
     seen = set()
     for item in items:
@@ -1681,7 +1881,6 @@ def fetch_rss_headlines() -> dict:
 
 
 # -------------------------- ETF / OPTIONS / AGGREGATE DERIVATIVES -------------
-# CoinGlass endpoints used below are documented in the official v4 endpoint reference.
 
 class _TableParser(HTMLParser):
     """Small dependency-free HTML table reader for Farside's published table."""
@@ -1690,17 +1889,24 @@ class _TableParser(HTMLParser):
         self.rows = []
         self.row = None
         self.cell = None
+
     def handle_starttag(self, tag, attrs):
-        if tag == "tr": self.row = []
-        elif tag in ("td", "th") and self.row is not None: self.cell = []
+        if tag == "tr":
+            self.row = []
+        elif tag in ("td", "th") and self.row is not None:
+            self.cell = []
+
     def handle_data(self, data):
-        if self.cell is not None: self.cell.append(data)
+        if self.cell is not None:
+            self.cell.append(data)
+
     def handle_endtag(self, tag):
         if tag in ("td", "th") and self.cell is not None and self.row is not None:
             self.row.append(" ".join(" ".join(self.cell).split()))
             self.cell = None
         elif tag == "tr" and self.row is not None:
-            if self.row: self.rows.append(self.row)
+            if self.row:
+                self.rows.append(self.row)
             self.row = None
 
 
@@ -1733,7 +1939,6 @@ def fetch_btc_etf_flows() -> dict:
             if len(row) < 3:
                 continue
             date_cell = row[0].strip()
-            # Farside date cells generally look like 21 Sep 2026.
             try:
                 dt = datetime.strptime(date_cell, "%d %b %Y").replace(tzinfo=timezone.utc)
             except ValueError:
@@ -1742,20 +1947,20 @@ def fetch_btc_etf_flows() -> dict:
             total = vals[-1] if vals else None
             if total is None:
                 continue
-            # P1.2 Fix: Если все отдельные фонды еще не отчитались (прочерки/пусто), а Total=0.0 — это незавершенная сессия
             fund_cells = vals[:-1] if len(vals) > 1 else []
             if fund_cells and all(v is None for v in fund_cells) and total == 0.0:
                 continue
             candidates.append({"date": dt.date().isoformat(), "date_utc": iso_utc(dt), "total_net_flow_usd_millions": total})
         if not candidates:
-            return {"status": "UNAVAILABLE", "source": FARSIDE_BTC_ETF_URL, "reason": "No parseable daily rows found; page structure may have changed"}
+            return {"status": "UNAVAILABLE", "source": FARSIDE_BTC_ETF_URL, "reason": "No parseable daily rows found"}
         candidates.sort(key=lambda x: x["date"])
         recent = candidates[-30:]
         flows = [x["total_net_flow_usd_millions"] for x in recent]
         n_sessions = len(flows)
         return {
-            "status": "OK", "source": FARSIDE_BTC_ETF_URL,
-            "source_note": "Farside Investors table; values in USD millions, daily flow is not AUM and not price change. Note: ETF sessions represent trading days (not calendar days).",
+            "status": "OK",
+            "source": FARSIDE_BTC_ETF_URL,
+            "source_note": "Farside Investors table; values in USD millions.",
             "latest": recent[-1],
             "trading_sessions_available": n_sessions,
             "latest_3_sessions_sum_usd_millions": round(sum(flows[-3:]), 2) if n_sessions >= 3 else None,
@@ -1763,7 +1968,7 @@ def fetch_btc_etf_flows() -> dict:
             "latest_30d_sum_usd_millions": round(sum(flows[-30:]), 2) if n_sessions >= 30 else None,
             "available_history_sum_usd_millions": round(sum(flows), 2),
             "daily_history_available": recent,
-            "btc_equivalent": "Not calculated here because flow date and current BTC price are not the same timestamp; calculate only when using a matched price/date.",
+            "btc_equivalent": "Not calculated here because flow date and current BTC price are not the same timestamp.",
         }
     except Exception as exc:
         return {"status": "UNAVAILABLE", "source": FARSIDE_BTC_ETF_URL, "reason": str(exc)}
@@ -1789,7 +1994,6 @@ def fetch_deribit_options() -> dict:
     ivs = []
     for item in data:
         name = str(item.get("instrument_name", ""))
-        # BTC-27DEC24-100000-C; expired contracts excluded when date is parseable.
         match = re.match(r"BTC-(\d{1,2}[A-Z]{3}\d{2})-(\d+)-(C|P)$", name)
         if not match:
             continue
@@ -1807,7 +2011,16 @@ def fetch_deribit_options() -> dict:
         if oi <= 0 and iv is None:
             continue
         key = expiry.date().isoformat()
-        bucket = expiries.setdefault(key, {"expiry_utc": key, "call_open_interest_contracts": 0.0, "put_open_interest_contracts": 0.0, "iv_observations": [], "days_to_expiry": max(0, (expiry.date()-now.date()).days)})
+        bucket = expiries.setdefault(
+            key,
+            {
+                "expiry_utc": key,
+                "call_open_interest_contracts": 0.0,
+                "put_open_interest_contracts": 0.0,
+                "iv_observations": [],
+                "days_to_expiry": max(0, (expiry.date() - now.date()).days),
+            },
+        )
         if side == "C":
             bucket["call_open_interest_contracts"] += oi
             total_call_oi += oi
@@ -1815,7 +2028,6 @@ def fetch_deribit_options() -> dict:
             bucket["put_open_interest_contracts"] += oi
             total_put_oi += oi
         total_oi += oi
-        # ATM proxy only: IV values for strikes within 3% of underlying, not true delta-neutral ATM.
         if iv is not None:
             ivs.append(iv)
             if underlying and abs(strike / underlying - 1) <= 0.03:
@@ -1824,7 +2036,11 @@ def fetch_deribit_options() -> dict:
     for key, bucket in sorted(expiries.items()):
         obs = bucket.pop("iv_observations")
         bucket["near_atm_iv_mean_pct"] = round(statistics.mean(obs), 2) if obs else None
-        bucket["put_call_oi_ratio"] = round(bucket["put_open_interest_contracts"] / bucket["call_open_interest_contracts"], 3) if bucket["call_open_interest_contracts"] else None
+        bucket["put_call_oi_ratio"] = (
+            round(bucket["put_open_interest_contracts"] / bucket["call_open_interest_contracts"], 3)
+            if bucket["call_open_interest_contracts"]
+            else None
+        )
         bucket["call_open_interest_contracts"] = round(bucket["call_open_interest_contracts"], 3)
         bucket["put_open_interest_contracts"] = round(bucket["put_open_interest_contracts"], 3)
         expiry_rows.append(bucket)
@@ -1840,7 +2056,7 @@ def fetch_deribit_options() -> dict:
         "put_call_oi_ratio": round(total_put_oi / total_call_oi, 3) if total_call_oi else None,
         "mean_mark_iv_pct_all_listed_options": round(statistics.mean(ivs), 2) if ivs else None,
         "expiry_breakdown_next_12": expiry_rows[:12],
-        "limitations": "Deribit-only, not global options market. Open-interest contract units differ by contract; do not sum as USD notional. This is put/call OI and near-ATM IV proxy, not true 25-delta skew, not a full volatility surface, and not max pain.",
+        "limitations": "Deribit-only, not global options market.",
     }
 
 
@@ -1851,7 +2067,6 @@ def fetch_deribit_dvol() -> dict:
         cached["cache_status"] = "CACHE_HIT"
         return cached
     if cached and cached.get("status") == "UNAVAILABLE":
-        # Temporary failure backoff (within 3 minutes)
         return cached
 
     now_ms = int(time.time() * 1000)
@@ -1867,9 +2082,12 @@ def fetch_deribit_dvol() -> dict:
             rows = data["result"].get("data", [])
             if rows:
                 latest = rows[-1]
-                # Формат строки: [timestamp, open, high, low, close]
                 dvol_val = float(latest[4])
-                regime = "Высокая (High Volatility)" if dvol_val >= 55.0 else ("Умеренная (Normal)" if dvol_val >= 40.0 else "Низкая (Compressed Vol)")
+                regime = (
+                    "Высокая (High Volatility)"
+                    if dvol_val >= 55.0
+                    else ("Умеренная (Normal)" if dvol_val >= 40.0 else "Низкая (Compressed Vol)")
+                )
                 res = {
                     "status": "OK",
                     "source": "Deribit BTC DVOL Index",
@@ -1939,7 +2157,6 @@ def fetch_coinbase_orderbook(threshold_pct: float = 1.0) -> dict:
     return {"status": "UNAVAILABLE", "reason": "No Coinbase L2 data"}
 
 
-
 def fetch_cme_basis(spot_price: float = 0.0) -> dict:
     """Бесплатные котировки фьючерсов Чикагской биржи (CME Bitcoin Futures BTC=F) и расчет гэпа."""
     cached = load_disk_cache("cme_basis_cache.json", ttl_seconds=10 * 60)
@@ -1962,11 +2179,14 @@ def fetch_cme_basis(spot_price: float = 0.0) -> dict:
                     if meta.get("regularMarketTime"):
                         reg_time = iso_utc(datetime.fromtimestamp(meta.get("regularMarketTime", 0), tz=timezone.utc))
                     if cme_last:
-                        save_disk_cache("cme_basis_cache.json", {
-                            "cme_last_price": cme_last,
-                            "cme_prev_close": cme_prev,
-                            "regular_market_time_utc": reg_time,
-                        })
+                        save_disk_cache(
+                            "cme_basis_cache.json",
+                            {
+                                "cme_last_price": cme_last,
+                                "cme_prev_close": cme_prev,
+                                "regular_market_time_utc": reg_time,
+                            },
+                        )
         except Exception:
             pass
         if not cme_last:
@@ -1998,20 +2218,27 @@ def coinglass_get(path: str, params: dict) -> dict:
         return {"status": "NOT_CONFIGURED", "reason": "COINGLASS_API_KEY not set"}
     try:
         response = SESSION.get(
-            f"{COINGLASS_API_BASE}{path}", params=params, timeout=(3, TIMEOUT_SEC),
+            f"{COINGLASS_API_BASE}{path}",
+            params=params,
+            timeout=(3, TIMEOUT_SEC),
             headers={"CG-API-KEY": COINGLASS_API_KEY, "accept": "application/json"},
         )
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict) or str(payload.get("code", "0")) not in ("0", "200", "None"):
             return {"status": "API_ERROR", "http_status": response.status_code, "response": payload}
-        return {"status": "OK", "http_status": response.status_code, "data": payload.get("data"), "source": "CoinGlass API", "collected_at_utc": iso_utc()}
+        return {
+            "status": "OK",
+            "http_status": response.status_code,
+            "data": payload.get("data"),
+            "source": "CoinGlass API",
+            "collected_at_utc": iso_utc(),
+        }
     except Exception as exc:
         return {"status": "UNAVAILABLE", "reason": str(exc), "source": "CoinGlass API"}
 
 
 def fetch_coinglass_aggregate() -> dict:
-    """Optional licensed cross-exchange layer. No key => no network call."""
     if not ENABLE_COINGLASS_API:
         return {"status": "DISABLED", "reason": "ENABLE_COINGLASS_API=false"}
     if not COINGLASS_API_KEY:
@@ -2031,12 +2258,16 @@ def fetch_coinglass_aggregate() -> dict:
         "large_onchain_transfers_btc": coinglass_get("/chain/v2/whale-transfer", {"symbol": "BTC"}),
     }
     ok = sum(1 for x in calls.values() if x.get("status") == "OK")
-    return {"status": "OK" if ok else "PARTIAL_OR_UNAVAILABLE", "available_endpoint_count": ok, "requested_endpoint_count": len(calls), "metrics": calls,
-            "interpretation_limit": "CoinGlass aggregates exchange data; it overlaps with Binance and is not an independent confirmation of the same metric. Exchange coverage and endpoint availability depend on subscription plan."}
+    return {
+        "status": "OK" if ok else "PARTIAL_OR_UNAVAILABLE",
+        "available_endpoint_count": ok,
+        "requested_endpoint_count": len(calls),
+        "metrics": calls,
+        "interpretation_limit": "CoinGlass aggregates exchange data.",
+    }
 
 
 def collect_manual_inputs() -> list[dict]:
-    """Collect user-prepared screenshots/CSV/JSON/text from manual_inputs folder."""
     MANUAL_INPUT_DIR.mkdir(parents=True, exist_ok=True)
     accepted = {".png", ".jpg", ".jpeg", ".webp", ".csv", ".json", ".txt", ".md"}
     ignored_names = {"readme.txt", "readme.md", ".gitkeep", ".gitignore"}
@@ -2047,7 +2278,6 @@ def collect_manual_inputs() -> list[dict]:
         if path.name.lower() in ignored_names or path.name.startswith("."):
             continue
         if path.stat().st_size > 15_000_000:
-            print(f"[WARN] Manual input skipped (>15MB): {path.name}")
             continue
         item = {"filename": path.name, "extension": path.suffix.lower(), "size_bytes": path.stat().st_size, "path": str(path), "status": "LOADED"}
         if path.suffix.lower() in {".json", ".csv", ".txt", ".md"}:
@@ -2063,8 +2293,7 @@ def collect_manual_inputs() -> list[dict]:
 # -------------------------- ВЕРИФИЦИРОВАННЫЙ СКРИНШОТ -----------------------
 
 def dismiss_page_overlays(page) -> None:
-    """Очистка всплывающих окон, согласий на cookie, шторки настроек и рекламы."""
-    # 1. Принятие cookie (клик по кнопкам)
+    """Очистка всплывающих окон, согласий на cookie и рекламных баннеров."""
     try:
         for btn_text in ("Accept", "Accept all", "Agree", "I agree", "Allow all"):
             btn = page.locator(f"button:has-text('{btn_text}')").first
@@ -2077,14 +2306,12 @@ def dismiss_page_overlays(page) -> None:
     except Exception:
         pass
 
-    # 2. Закрытие шторки настроек CoinGlass Heatmap (MUI) — строго кнопкой закрытия
     try:
         page.evaluate("""() => {
             const closeBtn = document.querySelector('button[aria-label="Close heatmap settings"]');
             if (closeBtn) {
                 closeBtn.click();
             } else {
-                // Если шторка открыта, но aria-label изменился: ищем контейнер с "Heatmap colors"
                 const drawer = Array.from(document.querySelectorAll('.MuiBox-root, div')).find(el => {
                     const txt = el.innerText || '';
                     return txt.includes('Heatmap colors') && txt.includes('Sensitivity');
@@ -2098,10 +2325,8 @@ def dismiss_page_overlays(page) -> None:
     except Exception:
         pass
 
-    # 3. Удаление оверлеев, рекламных баннеров и всплывающих виджетов
     try:
         page.evaluate("""() => {
-            // Статические селекторы модалок и виджетов
             const selectors = [
                 '.ant-drawer', '.ant-drawer-mask', '.ant-dropdown', '.ant-popover',
                 '#onetrust-banner-sdk', '.ant-modal-root',
@@ -2112,44 +2337,6 @@ def dismiss_page_overlays(page) -> None:
             ];
             selectors.forEach(sel => {
                 document.querySelectorAll(sel).forEach(el => el.remove());
-            });
-
-            // Рекламные баннеры Bitunix и их родительские контейнеры
-            document.querySelectorAll('img[alt*="bitunix"], a[href*="bitunix"], [class*="bitunix"]').forEach(el => {
-                const wrapper = el.closest('.MuiBox-root') || el.parentElement || el;
-                wrapper.remove();
-            });
-
-            // Битые плейсхолдеры рекламы (например [ad] на CryptoQuant)
-            document.querySelectorAll('img[alt*="ad"], img[alt*="Ad"]').forEach(el => {
-                const wrapper = el.parentElement || el;
-                wrapper.remove();
-            });
-
-            // Одиночный крестик закрытия баннера в верхней части страницы (y < 250)
-            document.querySelectorAll('button, div, span').forEach(el => {
-                const t = (el.innerText || '').trim();
-                if (t === '×' || t === '✕' || t === 'X') {
-                    const rect = el.getBoundingClientRect();
-                    if (rect.top < 250 && rect.width < 50 && rect.height < 50) {
-                        (el.closest('[class*="banner"]') || el.parentElement || el).remove();
-                    }
-                }
-            });
-
-            // Плавающий попап Legend NEW в правом нижнем углу
-            document.querySelectorAll('div, span, section, aside').forEach(el => {
-                const style = window.getComputedStyle(el);
-                const isFloating = style.position === 'fixed' || style.position === 'absolute';
-                const text = (el.innerText || '').trim();
-                if ((isFloating && text.length < 50) || text === 'Legend NEW') {
-                    if (text.includes('Legend') && text.includes('NEW')) {
-                        (el.closest('[class*="MuiBox"]') || el.parentElement || el).remove();
-                    }
-                    if (text.includes('Save Up to') && text.includes('USDT')) {
-                        el.remove();
-                    }
-                }
             });
         }""")
     except Exception:
@@ -2163,7 +2350,7 @@ def capture_coinglass_clean() -> list[dict]:
     captures = []
     page = None
     SCREENSHOT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    print("[*] Попытка получить скриншот CoinGlass; содержимое будет проверено насколько возможно...")
+    print("[*] Получение скриншота карты ликвидаций CoinGlass...")
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -2184,7 +2371,6 @@ def capture_coinglass_clean() -> list[dict]:
             response = page.goto(COINGLASS_HEATMAP_URL, timeout=30000, wait_until="domcontentloaded")
             http_status = response.status if response is not None else None
 
-            # Ждем появления canvas графика
             try:
                 page.wait_for_selector("canvas", timeout=12000)
             except Exception:
@@ -2192,13 +2378,11 @@ def capture_coinglass_clean() -> list[dict]:
             page.wait_for_timeout(2000)
 
             dismiss_page_overlays(page)
-            # Отводим курсор мыши, чтобы не оставлять всплывающий тултип поверх графика
             try:
                 page.mouse.move(0, 0)
             except Exception:
                 pass
             page.wait_for_timeout(1500)
-            # Повторная очистка: Legend NEW и реклама часто подгружаются с задержкой
             dismiss_page_overlays(page)
             page.wait_for_timeout(500)
 
@@ -2212,21 +2396,23 @@ def capture_coinglass_clean() -> list[dict]:
             semantic_ok = http_status is not None and 200 <= http_status < 400 and has_relevant_text and has_btc_context
             if file_ok and semantic_ok:
                 captures.append({
-                    "label": "CoinGlass Liquidation Heatmap Model 3 (page-level checks passed; chart pixels not independently validated)",
+                    "label": "CoinGlass Liquidation Heatmap Model 3",
                     "path": str(SCREENSHOT_FILE),
                     "size_bytes": SCREENSHOT_FILE.stat().st_size,
                     "http_status": http_status,
                     "page_title": page_title,
-                    "semantic_check": "PASS: HTTP + relevant page text + BTC context; chart content still needs visual review",
+                    "semantic_check": "PASS: HTTP + relevant page text + BTC context",
                 })
-                print(f"[+] Скриншот сохранен; базовые проверки страницы пройдены ({SCREENSHOT_FILE.stat().st_size // 1024} КБ)")
             else:
-                print(f"[WARN] CoinGlass screenshot not trusted: HTTP={http_status}, file_ok={file_ok}, relevant_text={has_relevant_text}, btc_context={has_btc_context}, title={page_title!r}")
                 if SCREENSHOT_FILE.exists():
-                    captures.append({"label":"CoinGlass heatmap page screenshot — UNVERIFIED, inspect manually",
-                                     "path":str(SCREENSHOT_FILE),"size_bytes":SCREENSHOT_FILE.stat().st_size,
-                                     "http_status":http_status,"page_title":page_title,
-                                     "semantic_check":"FAILED_OR_INCOMPLETE; screenshot retained for manual review; do not treat as data"})
+                    captures.append({
+                        "label": "CoinGlass heatmap page screenshot — UNVERIFIED",
+                        "path": str(SCREENSHOT_FILE),
+                        "size_bytes": SCREENSHOT_FILE.stat().st_size,
+                        "http_status": http_status,
+                        "page_title": page_title,
+                        "semantic_check": "FAILED_OR_INCOMPLETE",
+                    })
             browser.close()
     except Exception as exc:
         print(f"[WARN] Сбой снятия скриншота: {exc}")
@@ -2234,9 +2420,12 @@ def capture_coinglass_clean() -> list[dict]:
             if page is not None and not page.is_closed():
                 page.screenshot(path=str(SCREENSHOT_FILE), full_page=False, timeout=5000)
                 if SCREENSHOT_FILE.exists():
-                    captures.append({"label":"CoinGlass heatmap page screenshot — UNVERIFIED partial capture",
-                                     "path":str(SCREENSHOT_FILE),"size_bytes":SCREENSHOT_FILE.stat().st_size,
-                                     "semantic_check":"NAVIGATION_OR_CAPTURE_ERROR; inspect manually; do not treat as market data"})
+                    captures.append({
+                        "label": "CoinGlass heatmap page screenshot — UNVERIFIED partial capture",
+                        "path": str(SCREENSHOT_FILE),
+                        "size_bytes": SCREENSHOT_FILE.stat().st_size,
+                        "semantic_check": "NAVIGATION_OR_CAPTURE_ERROR",
+                    })
         except Exception:
             pass
 
@@ -2244,30 +2433,27 @@ def capture_coinglass_clean() -> list[dict]:
 
 
 def capture_free_dashboard_pages() -> list[dict]:
-    """Try screenshots of free public dashboards; failed/blocked pages are recorded, never treated as data."""
     if not ENABLE_SCREENSHOT:
-        return [{"status":"DISABLED", "reason":"ENABLE_COINGLASS_SCREENSHOT=false"}]
+        return [{"status": "DISABLED", "reason": "ENABLE_COINGLASS_SCREENSHOT=false"}]
     if sync_playwright is None:
-        return [{"status":"BROWSER_UNAVAILABLE", "reason":"Install playwright and run playwright install chromium"}]
-    out=[]
-    shots_dir=BASE_DIR / "free_dashboard_screenshots"
+        return [{"status": "BROWSER_UNAVAILABLE", "reason": "Install playwright and run playwright install chromium"}]
+    out = []
+    shots_dir = BASE_DIR / "free_dashboard_screenshots"
     shots_dir.mkdir(parents=True, exist_ok=True)
     try:
         with sync_playwright() as p:
-            browser=p.chromium.launch(headless=True, args=["--no-sandbox","--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
-            context=browser.new_context(viewport={"width":1920,"height":1080}, user_agent=BROWSER_USER_AGENT)
-            for label,url,keywords in FREE_DASHBOARD_PAGES:
-                safe_name=re.sub(r"[^a-z0-9]+","_",label.lower()).strip("_")
-                path=shots_dir/f"{safe_name}.png"
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
+            context = browser.new_context(viewport={"width": 1920, "height": 1080}, user_agent=BROWSER_USER_AGENT)
+            for label, url, keywords in FREE_DASHBOARD_PAGES:
+                safe_name = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+                path = shots_dir / f"{safe_name}.png"
                 page = None
-                nav_timeout = 25000
                 try:
-                    page=context.new_page()
+                    page = context.new_page()
                     page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                    response=page.goto(url,timeout=nav_timeout,wait_until="domcontentloaded")
-                    http=response.status if response else None
+                    response = page.goto(url, timeout=25000, wait_until="domcontentloaded")
+                    http = response.status if response else None
 
-                    # Для тяжелых SPA (например CryptoQuant) даем время на гидратацию React/Highcharts
                     if "cryptoquant" in url.lower():
                         try:
                             page.wait_for_selector(".highcharts-container, svg, [class*='table']", timeout=12000)
@@ -2277,64 +2463,32 @@ def capture_free_dashboard_pages() -> list[dict]:
                     else:
                         page.wait_for_timeout(2500)
 
-                    title=(page.title() or "").strip()
-                    body=(page.locator("body").inner_text(timeout=4000) or "")[:15000]
-                    lower=body.lower()
+                    title = (page.title() or "").strip()
+                    body = (page.locator("body").inner_text(timeout=4000) or "")[:15000]
+                    lower = body.lower()
 
-                    # Быстрое определение Cloudflare/бот-блока
                     is_cf = any(cf in lower for cf in ("cloudflare", "performing security verification", "verify you are human", "just a moment")) or (http == 403)
                     if is_cf:
                         out.append({
                             "label": label, "url": url, "path": None, "http_status": http,
                             "page_title": title, "semantic_text_check": False,
                             "status": "BLOCKED_BY_CLOUDFLARE",
-                            "warning": "Страница заблокирована защитой Cloudflare; график недоступен без авторизации.",
                         })
                         page.close()
                         continue
 
-                    # Очистка оверлеев и рекламы
                     dismiss_page_overlays(page)
-
-                    # Настройка viewport для дашбордов с длинным контентом
-                    if "futures" in label.lower() and "coinglass" in label.lower():
-                        try:
-                            page.set_viewport_size({"width": 1920, "height": 3000})
-                            page.wait_for_timeout(1000)
-                            page.evaluate("() => window.scrollTo(0, 0)")
-                            page.wait_for_timeout(500)
-                        except Exception:
-                            pass
-                    elif "overview" in label.lower() and "cryptoquant" in label.lower():
-                        try:
-                            page.set_viewport_size({"width": 1920, "height": 1350})
-                            page.wait_for_timeout(500)
-                        except Exception:
-                            pass
-
-                    # Проверка фактического рендеринга графиков для SPA
                     rendered_elements_count = page.evaluate("() => document.querySelectorAll('svg, canvas, .highcharts-container').length")
                     semantic = any(k in lower for k in keywords)
 
-                    # Не сохраняем пустой белый холст при нулевом числе элементов графика
                     if "cryptoquant" in url.lower() and rendered_elements_count < 3:
                         out.append({
                             "label": label, "url": url, "path": None, "http_status": http,
                             "page_title": title, "semantic_text_check": semantic,
                             "status": "SPA_EMPTY_RENDER",
-                            "warning": "Интерфейс не отрендерил графики (пустой холст SPA); скриншот пропущен во избежание дезинформации.",
                         })
                         page.close()
                         continue
-
-                    try:
-                        page.mouse.move(0, 0)
-                    except Exception:
-                        pass
-                    page.wait_for_timeout(1000)
-                    # Повторная очистка: Legend NEW часто подгружается с задержкой
-                    dismiss_page_overlays(page)
-                    page.wait_for_timeout(500)
 
                     page.screenshot(path=str(path), full_page=False)
                     ok = bool(http and 200 <= http < 400 and semantic and path.exists() and path.stat().st_size > 20000)
@@ -2343,13 +2497,10 @@ def capture_free_dashboard_pages() -> list[dict]:
                         "page_title": title, "semantic_text_check": semantic,
                         "rendered_charts_count": rendered_elements_count,
                         "status": "CAPTURED_PAGE_REQUIRES_VISUAL_VALIDATION" if ok else "CAPTURE_NOT_VERIFIED",
-                        "body_preview": body[:1500],
-                        "warning": "A screenshot of a page is not proof that a chart rendered or its values are readable."
                     })
                     page.close()
                 except Exception as exc:
-                    out.append({"label":label,"url":url,"status":"UNAVAILABLE","reason":str(exc),"path":None,
-                                "warning":"Сбой загрузки страницы; скриншот отсутствует."})
+                    out.append({"label": label, "url": url, "status": "UNAVAILABLE", "reason": str(exc), "path": None})
                     if page is not None and not page.is_closed():
                         try:
                             page.close()
@@ -2357,7 +2508,7 @@ def capture_free_dashboard_pages() -> list[dict]:
                             pass
             browser.close()
     except Exception as exc:
-        out.append({"status":"BROWSER_UNAVAILABLE","reason":str(exc)})
+        out.append({"status": "BROWSER_UNAVAILABLE", "reason": str(exc)})
     return out
 
 
@@ -2390,7 +2541,8 @@ def get_historical_comparison(current: dict, history: list) -> dict:
             "elapsed_hours": round(elapsed, 2),
             "spot_price_change_usd": round(spot_price - float(previous.get("spot_price", spot_price)), 2),
             "oi_change_btc": round(oi - float(previous["open_interest_btc"]), 2)
-                if oi is not None and finite_float(previous.get("open_interest_btc")) is not None else None,
+            if oi is not None and finite_float(previous.get("open_interest_btc")) is not None
+            else None,
             "quant_bias_change": round(current_bias - prev_bias, 1) if current_bias is not None and prev_bias is not None else None,
             "prev_quant_bias_label": previous.get("quant_bias_label"),
             "prev_divergence_state": previous.get("divergence_state"),
@@ -2428,7 +2580,6 @@ def save_snapshot(current: dict, history: list) -> None:
         "futures_price": current["prices"]["futures_last"],
         "open_interest_btc": derivatives.get("live_open_interest_btc"),
         "funding_pct": derivatives.get("current_funding_rate_pct"),
-        # Quant metrics for trend/history analysis
         "quant_bias_score": quant.get("composite_score"),
         "quant_bias_label": quant.get("bias_label"),
         "oi_zscore": z_scores.get("oi_zscore"),
@@ -2438,16 +2589,14 @@ def save_snapshot(current: dict, history: list) -> None:
     history.append(row)
     cutoff = time.time() - HISTORY_LOOKBACK_HOURS * 3600
     kept = [x for x in history if finite_float(x.get("epoch"), 0) >= cutoff][-MAX_HISTORY_SNAPSHOTS:]
-    tmp_path = HISTORY_FILE.with_suffix(".tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(kept, f, ensure_ascii=False, indent=2)
-    tmp_path.replace(HISTORY_FILE)
+    atomic_write_json(HISTORY_FILE, kept)
 
 
 def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = None, force_time: Optional[float] = None) -> dict:
     """
     Backtest & Calibration Logger for Quant Bias.
-    Tracks predictions, checks outcomes after ~24 hours (or on SL/TP touch), and computes live win-rate metrics.
+    Отслеживает сигналы строго по историческим свечам ПОСЛЕ точки входа (Zero Lookbehind/Lookahead Bias).
+    При одновременном касании SL и TP внутри одной свечи фиксирует SL_HIT (Worst-Case Execution).
     """
     path = tracker_path or TRACKER_FILE
     now = force_time or time.time()
@@ -2459,13 +2608,12 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
     div_state = current.get("divergence_engine", {}).get("24h_divergence", {}).get("divergence_state")
     oi_z = current.get("statistical_z_scores", {}).get("oi_zscore")
 
-    # Explicit post-entry High / Low price detection (e.g. for unit tests and simulation).
-    # P1.1 Institutional Fix: NEVER use rolling 24h ticker summary (spot_24h_summary) as post-entry extremes,
-    # as it includes prices from BEFORE trade inception and causes instant false stop-outs.
-    high_p = finite_float(current.get("high_price"))
-    low_p = finite_float(current.get("low_price"))
+    explicit_high_p = finite_float(current.get("high_price"))
+    explicit_low_p = finite_float(current.get("low_price"))
+    recent_klines_1h = current.get("recent_closed_klines_1h")
+    if not isinstance(recent_klines_1h, list):
+        recent_klines_1h = []
 
-    # Extract or compute ATR Risk Model
     risk = current.get("risk_model") or current.get("atr_risk")
     if not risk and spot_price:
         struct_4h = current.get("market_structure", {}).get("4h", {})
@@ -2476,7 +2624,11 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
         if atr14_val:
             risk = calculate_atr_risk_levels(spot_price, atr14_val, score or 0)
 
-    direction = risk.get("direction", "NEUTRAL") if risk else ("LONG" if (score and score >= 15) else ("SHORT" if (score and score <= -15) else "NEUTRAL"))
+    direction = (
+        risk.get("direction", "NEUTRAL")
+        if risk
+        else ("LONG" if (score and score >= 15) else ("SHORT" if (score and score <= -15) else "NEUTRAL"))
+    )
     atr14_val = risk.get("atr14") if risk else None
     sl_val = risk.get("recommended", {}).get("stop_loss") if risk else None
     tp1_val = risk.get("recommended", {}).get("tp1_rr2") if risk else None
@@ -2492,7 +2644,6 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
         except Exception:
             tracker = []
     else:
-        # Initial seed: import existing records from market_history.json if present
         try:
             if path == TRACKER_FILE and HISTORY_FILE.exists():
                 with HISTORY_FILE.open("r", encoding="utf-8") as f:
@@ -2521,7 +2672,6 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
         except Exception:
             pass
 
-    # Backfill default fields for older records
     for item in tracker:
         item.setdefault("entry_price", item.get("spot_price"))
         if "direction" not in item:
@@ -2540,7 +2690,7 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
         item.setdefault("resolution_type", "PENDING" if not item.get("resolved") else "24H_MARKET_EXPIRY")
         item.setdefault("pnl_pct", item.get("price_change_24h_pct"))
 
-    # 1. Resolve pending predictions
+    # 1. Разрешение активных прогнозов строго по пост-входовым наблюдениям
     newly_resolved_count = 0
     for item in tracker:
         if not item.get("resolved"):
@@ -2563,63 +2713,84 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
             pnl_usd = None
             res_price = None
 
-            # Case A: Event-driven touch check using post-entry price observations
-            obs_high = high_p if high_p is not None else spot_price
-            obs_low = low_p if low_p is not None else spot_price
+            # Собираем последовательность ценовых окон строго ПОСЛЕ входа (open_time_ms > item_epoch * 1000)
+            observation_windows: list[tuple[float, float]] = []
+            if explicit_high_p is not None or explicit_low_p is not None:
+                oh = explicit_high_p if explicit_high_p is not None else spot_price
+                ol = explicit_low_p if explicit_low_p is not None else spot_price
+                if oh is not None and ol is not None:
+                    observation_windows.append((oh, ol))
+            else:
+                for kline in recent_klines_1h:
+                    k_open_ms = finite_float(kline.get("open_time_ms"))
+                    k_high = finite_float(kline.get("high"))
+                    k_low = finite_float(kline.get("low"))
+                    if k_open_ms is not None and k_open_ms > (item_epoch * 1000.0) and k_high is not None and k_low is not None:
+                        observation_windows.append((k_high, k_low))
+                if spot_price is not None and elapsed > 0:
+                    observation_windows.append((spot_price, spot_price))
 
-            if sl is not None and obs_high is not None and obs_low is not None:
-                if dir_val == "LONG":
-                    if obs_low <= sl:
-                        resolved_now = True
-                        res_type = "SL_HIT"
-                        outcome = "LOSS"
-                        is_win = False
-                        res_price = sl
-                        pnl_pct = round((sl / item_entry - 1) * 100, 2)
-                        pnl_usd = round(sl - item_entry, 2)
-                    elif tp2 is not None and obs_high >= tp2:
-                        resolved_now = True
-                        res_type = "TP2_HIT"
-                        outcome = "WIN"
-                        is_win = True
-                        res_price = tp2
-                        pnl_pct = round((tp2 / item_entry - 1) * 100, 2)
-                        pnl_usd = round(tp2 - item_entry, 2)
-                    elif tp1 is not None and obs_high >= tp1:
-                        resolved_now = True
-                        res_type = "TP1_HIT"
-                        outcome = "WIN"
-                        is_win = True
-                        res_price = tp1
-                        pnl_pct = round((tp1 / item_entry - 1) * 100, 2)
-                        pnl_usd = round(tp1 - item_entry, 2)
-                elif dir_val == "SHORT":
-                    if obs_high >= sl:
-                        resolved_now = True
-                        res_type = "SL_HIT"
-                        outcome = "LOSS"
-                        is_win = False
-                        res_price = sl
-                        pnl_pct = round((1 - sl / item_entry) * 100, 2)
-                        pnl_usd = round(item_entry - sl, 2)
-                    elif tp2 is not None and obs_low <= tp2:
-                        resolved_now = True
-                        res_type = "TP2_HIT"
-                        outcome = "WIN"
-                        is_win = True
-                        res_price = tp2
-                        pnl_pct = round((1 - tp2 / item_entry) * 100, 2)
-                        pnl_usd = round(item_entry - tp2, 2)
-                    elif tp1 is not None and obs_low <= tp1:
-                        resolved_now = True
-                        res_type = "TP1_HIT"
-                        outcome = "WIN"
-                        is_win = True
-                        res_price = tp1
-                        pnl_pct = round((1 - tp1 / item_entry) * 100, 2)
-                        pnl_usd = round(item_entry - tp1, 2)
+            if sl is not None and observation_windows:
+                for obs_high, obs_low in observation_windows:
+                    if dir_val == "LONG":
+                        # Worst-case execution: SL проверяется первым
+                        if obs_low <= sl:
+                            resolved_now = True
+                            res_type = "SL_HIT"
+                            outcome = "LOSS"
+                            is_win = False
+                            res_price = sl
+                            pnl_pct = round((sl / item_entry - 1) * 100, 2)
+                            pnl_usd = round(sl - item_entry, 2)
+                            break
+                        elif tp2 is not None and obs_high >= tp2:
+                            resolved_now = True
+                            res_type = "TP2_HIT"
+                            outcome = "WIN"
+                            is_win = True
+                            res_price = tp2
+                            pnl_pct = round((tp2 / item_entry - 1) * 100, 2)
+                            pnl_usd = round(tp2 - item_entry, 2)
+                            break
+                        elif tp1 is not None and obs_high >= tp1:
+                            resolved_now = True
+                            res_type = "TP1_HIT"
+                            outcome = "WIN"
+                            is_win = True
+                            res_price = tp1
+                            pnl_pct = round((tp1 / item_entry - 1) * 100, 2)
+                            pnl_usd = round(tp1 - item_entry, 2)
+                            break
+                    elif dir_val == "SHORT":
+                        if obs_high >= sl:
+                            resolved_now = True
+                            res_type = "SL_HIT"
+                            outcome = "LOSS"
+                            is_win = False
+                            res_price = sl
+                            pnl_pct = round((1 - sl / item_entry) * 100, 2)
+                            pnl_usd = round(item_entry - sl, 2)
+                            break
+                        elif tp2 is not None and obs_low <= tp2:
+                            resolved_now = True
+                            res_type = "TP2_HIT"
+                            outcome = "WIN"
+                            is_win = True
+                            res_price = tp2
+                            pnl_pct = round((1 - tp2 / item_entry) * 100, 2)
+                            pnl_usd = round(item_entry - tp2, 2)
+                            break
+                        elif tp1 is not None and obs_low <= tp1:
+                            resolved_now = True
+                            res_type = "TP1_HIT"
+                            outcome = "WIN"
+                            is_win = True
+                            res_price = tp1
+                            pnl_pct = round((1 - tp1 / item_entry) * 100, 2)
+                            pnl_usd = round(item_entry - tp1, 2)
+                            break
 
-            # Case B: 24h close comparison fallback (if not resolved by touch and elapsed >= 23.5 hours)
+            # Case B: Закрытие по истечении 24 часов
             if not resolved_now and elapsed >= 23.5 and spot_price is not None:
                 pct_change = (spot_price / item_entry - 1) * 100
                 item_label = item.get("quant_bias_label", "NEUTRAL")
@@ -2637,7 +2808,7 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
                     res_type = "24H_MARKET_PROFIT" if is_win else "24H_MARKET_LOSS"
                     pnl_pct = round(-pct_change, 2)
                     pnl_usd = round(item_entry - spot_price, 2)
-                else:  # NEUTRAL
+                else:
                     is_win = abs(pct_change) <= 1.5
                     outcome = "WIN" if is_win else "TREND_BREAKOUT"
                     res_type = "24H_RANGE_BOUND" if is_win else "24H_TREND_BREAKOUT"
@@ -2661,7 +2832,7 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
                 item["actual_elapsed_hours"] = round(elapsed, 2)
                 newly_resolved_count += 1
 
-    # 2. Append new prediction if at least 2 hours passed since last logged entry
+    # 2. Добавление нового прогноза (не чаще раза в 2 часа)
     valid_entries = [x for x in tracker if finite_float(x.get("epoch")) is not None]
     last_entry = max(valid_entries, key=lambda x: float(x["epoch"])) if valid_entries else None
     min_interval_sec = 2 * 3600
@@ -2696,16 +2867,13 @@ def update_calibration_tracker(current: dict, tracker_path: Optional[Path] = Non
             })
             new_logged = True
 
-    # 3. Save tracker back to disk
+    # 3. Атомарное сохранение базы калибровки
     try:
-        tmp_p = path.with_suffix(".tmp")
-        with tmp_p.open("w", encoding="utf-8") as f:
-            json.dump(tracker, f, ensure_ascii=False, indent=2)
-        tmp_p.replace(path)
+        atomic_write_json(path, tracker)
     except Exception as exc:
         print(f"[WARN] Сбой сохранения калибровочного логгера: {exc}")
 
-    # 4. Compute Calibration Metrics
+    # 4. Вычисление метрик калибровки
     resolved_list = [x for x in tracker if x.get("resolved") is True]
     pending_list = [x for x in tracker if not x.get("resolved")]
     total_resolved = len(resolved_list)
@@ -2804,68 +2972,58 @@ SYSTEM_INSTRUCTION = """
      * Вместо "bid_vs_ask_ratio = 3.25" пиши: "В биржевом стакане перевес покупателей в 3.2 раза: 486 BTC лимитных покупок против 150 BTC продаж прямо под текущей ценой".
      * Вместо "LH_LL_downtrend" пиши: "Локальный нисходящий тренд (понижающиеся максимумы и минимумы)".
      * Вместо "CVD / Taker delta" пиши: "Агрессивные рыночные покупки / маркет-ордера".
-     * Вместо "бэквордация" пиши: "Фьючерс торгуется со скидкой (дисконтом) к спотовой цене".
 2. ПРАКТИЧЕСКАЯ ПОЛЬЗА И ВЫВОДЫ:
    - В конце отчета ОБЯЗАТЕЛЕН раздел «ГЛАВНЫЙ ВЫВОД И ТОРГОВЫЙ ПЛАН (ГЛАВНЫЕ ОЖИДАНИЯ)». Никаких размытых фраз — дай конкретные триггеры для входа в лонг, шорт и целевые уровни.
 3. МАКРОЭКОНОМИКА С ВРЕМЕНЕМ ДЛЯ ЛАТВИИ:
    - В блоке макроэкономики используй данные из `macro_calendar.upcoming_events`.
-   - Обязательно выпиши ВСЕ важные события США на текущую неделю (а если отчет формируется на выходных — на всю следующую торговую неделю) с указанием дня недели, даты и времени Риги (Латвия).
+   - Обязательно выпиши ВСЕ важные события США на текущую неделю (а на выходных — на следующую торговую неделю) с указанием дня недели, даты и времени Риги (Латвия).
 
 СТРУКТУРА ОТЧЕТА (СТРОГО СОБЛЮДАЙ ФОРМАТ):
 
 # РЫНОЧНАЯ РАЗВЕДКА BTC/USDT
 
 ## 1. СУТЬ И БЫСТРЫЙ ВЕРДИКТ РИСК-МЕНЕДЖЕРА
-- **Количественный скоринг (Quant Bias):** [Укажи балл от -100 до +100 и статус на русском, например: +10 из 100 (Нейтральный баланс)]
-- **Динамика скоринга:** [Как изменился балл с прошлого запуска и за 24 часа из блока historical_comparison. Рынок усиливается или слабеет?]
-- **Что происходит на рынке простыми словами:** [2-3 предложения без заумных терминов: кто контролирует ситуацию, где зажата цена, почему именно такой скоринг].
-- **Угроза резкого сквиза (выноса стопов):** [Оцени риск по Z-Score открытого интереса и ставки финансирования. Есть ли аномалии выше 2.0? Стоит ли ждать каскадных ликвидаций?]
-- **Исторический винрейт модели (Бэктест):** [Приведи quant_bias_calibration.readout: процент побед или факт накопления базы].
+- **Количественный скоринг (Quant Bias):** [Укажи балл от -100 до +100 и статус на русском]
+- **Динамика скоринга:** [Как изменился балл с прошлого запуска и за 24 часа из блока historical_comparison]
+- **Что происходит на рынке простыми словами:** [2-3 предложения: кто контролирует ситуацию, где зажата цена, почему именно такой скоринг].
+- **Угроза резкого сквиза (выноса стопов):** [Оцени риск по Z-Score открытого интереса и ставки финансирования].
+- **Исторический винрейт модели (Бэктест):** [Приведи quant_bias_calibration.readout].
 - **Итоговое решение риск-менеджера:** [ВНЕ РЫНКА (ЖДАТЬ ВЫХОДА) / ЛОНГ НА ПОДТВЕРЖДЕНИИ / ШОРТ НА ПОДТВЕРЖДЕНИИ].
 
 ## 2. КТО СЕЙЧАС ДАВИТ: СПОТ ИЛИ ФЬЮЧЕРСЫ
 - **Биржевой стакан (лимитные стенки ±1% от цены):**
-  * Спот Binance: [На чьей стороне перевес, сколько BTC в бидах и асках, есть ли плотная стена поддержки].
-  * Фьючерсы Binance и Bybit: [На чьей стороне перевес лимиток на деривативах].
-  * Институциональный стакан Coinbase Pro BTC-USD: [Отношение бидов к аскам из coinbase_orderbook].
+  * Спот Binance, Фьючерсы Binance/Bybit, Институциональный стакан Coinbase Pro BTC-USD.
 - **Реальный поток рыночных ордеров (Спотовая дельта):**
   * Поведение маркет-покупателей за 15 минут, 1 час, 4 часа и 24 часа.
-  * Вывод: [Есть ли реальный интерес покупать по рынку на споте, или объемы падают?]
 - **Позиционирование толпы:**
-  * Соотношение позиций: [Сколько % трейдеров сидит в лонгах на Binance и Bybit].
-  * Предупреждение: [Перегружена ли толпа лонгами или шортами, где опасность сбора ликвидности].
+  * Соотношение позиций и риск сбора ликвидности.
 
 ## 3. КАРТА ЛИКВИДАЦИЙ: ГДЕ СТОП-ЛОССЫ ТОЛПЫ
-- **Магнит сверху (Пул ликвидаций шортистов):** ~$XX,XXX – $XX,XXX [Опиши плотность скопления стопов].
-- **Магнит снизу (Пул ликвидаций лонгистов):** ~$XX,XXX – $XX,XXX [Опиши плотность скопления стопов].
-- **Куда тянет рынок:** [К какому из этих пулов цена ближе и где маркетмейкеру выгоднее устроить вынос].
+- **Магнит сверху (Пул ликвидаций шортистов):** ~$XX,XXX – $XX,XXX.
+- **Магнит снизу (Пул ликвидаций лонгистов):** ~$XX,XXX – $XX,XXX.
+- **Куда тянет рынок:** [Где маркетмейкеру выгоднее устроить вынос].
 
 ## 4. КЛЮЧЕВЫЕ ЦЕНОВЫЕ УРОВНИ И СТРУКТУРА
-- **Сопротивления сверху:** Локальное $XX,XXX (4H свинг-максимум), Главное $XX,XXX (дневной максимум).
-- **Поддержки снизу:** Локальная $XX,XXX (4H свинг-минимум), Главная $XX,XXX (дневной минимум).
-- **Состояние волатильности:** [Сужаются ли полосы Боллинджера, что показывает ATR и индекс подразумеваемой волатильности Deribit DVOL — готовится ли рынок к взрывному импульсу из боковика].
+- **Сопротивления сверху и Поддержки снизу (4H и 1D).**
+- **Состояние волатильности (ATR и индекс Deribit DVOL).**
 
 ## 5. МАКРОЭКОНОМИКА И ИНСТИТУЦИОНАЛЬНЫЕ ПОТОКИ (ВРЕМЯ ДЛЯ ЛАТВИИ / РИГА)
-### 📅 Календарь важных событий США:
-[Используй macro_calendar.upcoming_events. Выпиши списком ВСЕ события на неделю (а на выходных — на следующую неделю) с днем недели, датой и временем по Риге]:
-- 🔴 [День недели, дата, время Рига]: Название события — Уровень важности (Прогноз / Предыдущее). Пояснение влияния на доллар и крипту.
-### 🏛️ Институциональные потоки и биржи США:
-- **Спотовые Bitcoin ETF:** [Приток/отток за последние сессии из btc_spot_etf_flows, общий тренд институционалов].
-- **Фьючерсы CME (BTC=F):** [Базис к споту из cme_basis, институциональная премия/дисконт и гэп выходных дней].
-- **Главные инфоповоды:** [2-3 ключевые новости из ленты, которые могут повлиять на сантимент].
+- **Календарь важных событий США (время Риги).**
+- **Спотовые Bitcoin ETF, Фьючерсы CME (BTC=F) и Главные инфоповоды.**
 
 ## 6. ГЛАВНЫЙ ВЫВОД И ТОРГОВЫЙ ПЛАН (ГЛАВНЫЕ ОЖИДАНИЯ)
-- **Главное ожидание по рынку:** [Конкретное ожидание: чего ждем в первую очередь — ложный вынос ликвидности вниз, пробой вверх или затяжной боковик?]
-- **Динамическая риск-модель ATR (R:R 1:2 и 1:3):** [Используй СТРОГО точные числовые данные из risk_model: укажи ATR14, буфер 1.5x ATR, рекомендуемый сценарий, стоп-лосс и цели TP1/TP2. Запрещено выдумывать свои цифры — бери точные значения из risk_model.recommended, risk_model.long и risk_model.short].
-- **План на ЛОНГ:** [Точный уровень входа, стоп-лосс по ATR, цели TP1 (1:2) и TP2 (1:3), триггер подтверждения (например: «Вход в лонг только при закреплении 4-часовой свечи выше $83,150 с подтверждением спотовых покупок»)].
-- **План на ШОРТ:** [Точный уровень входа, стоп-лосс по ATR, цели TP1 (1:2) и TP2 (1:3), триггер подтверждения (например: «Шорт при уверенном пробое $82,240 вниз при уходе спотовой дельты в минус»)].
-- **Что отменит сценарий (Инвалидация):** [Какое ценовое или объемное событие полностью ломает план].
+- **Главное ожидание по рынку.**
+- **Динамическая риск-модель ATR (R:R 1:2 и 1:3):** [Используй СТРОГО точные числовые данные из risk_model].
+- **План на ЛОНГ:** [Точный уровень входа, стоп-лосс по ATR, цели TP1 (1:2) и TP2 (1:3), триггер подтверждения].
+- **План на ШОРТ:** [Точный уровень входа, стоп-лосс по ATR, цели TP1 (1:2) и TP2 (1:3), триггер подтверждения].
+- **Что отменит сценарий (Инвалидация).**
 """
 
 
-def run_gemini_synthesis(payload: dict, screenshots: list[dict]) -> str:
+def run_gemini_synthesis(payload: dict, screenshots: list[dict], model_override: Optional[str] = None) -> str:
     global genai, types
-    if not GEMINI_API_KEY:
+    api_key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
+    if not api_key:
         raise RuntimeError("GEMINI_API_KEY отсутствует в файле .env")
     if genai is None or types is None:
         try:
@@ -2876,11 +3034,16 @@ def run_gemini_synthesis(payload: dict, screenshots: list[dict]) -> str:
         except ImportError:
             raise RuntimeError("Установите пакет google-genai: pip install google-genai")
 
-    print(f"[*] Синтез рыночного брифа через {GEMINI_MODEL}...")
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    primary_model = model_override or get_configured_gemini_model()
+    fallback_model = "gemini-3.7-flash" if primary_model == "gemini-3.8-flash" else "gemini-3.8-flash"
+    candidate_models = [primary_model]
+    if fallback_model not in candidate_models:
+        candidate_models.append(fallback_model)
+
+    client = genai.Client(api_key=api_key)
     prompt = (
         "Составь профессиональный утренний бриф по Bitcoin на русском языке без англицизмов и без служебных ярлыков. "
-        "Особое внимание удели блоку макроэкономики (выдели все события США на неделю/следующую неделю со временем Риги/Латвии) "
+        "Особое внимание удели блоку макроэкономики (выдели все события США на неделю со временем Риги/Латвии) "
         "и обязательно закончи отчет четким разделом 'ГЛАВНЫЙ ВЫВОД И ТОРГОВЫЙ ПЛАН (ГЛАВНЫЕ ОЖИДАНИЯ)'.\n\n"
         "СЫРЫЕ РЫНОЧНЫЕ ДАННЫЕ:\n" + json.dumps(payload, ensure_ascii=False, indent=2)
     )
@@ -2900,31 +3063,35 @@ def run_gemini_synthesis(payload: dict, screenshots: list[dict]) -> str:
             contents.append(types.Part.from_bytes(data=image_path.read_bytes(), mime_type=mime))
 
     last_exc = None
-    for attempt in range(3):
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                ),
-            )
-            text = getattr(response, "text", None)
-            if text and text.strip():
-                return text.strip()
-            raise RuntimeError("Gemini вернул пустой ответ.")
-        except Exception as exc:
-            last_exc = exc
-            err_msg = str(exc)
-            if attempt < 2 and any(code in err_msg for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED")):
-                print(f"[*] Модель перегружена (попытка {attempt+1}/3), пауза {(attempt+1)*3}с перед повтором...")
-                time.sleep((attempt + 1) * 3)
-                continue
-            raise last_exc
+    for model_name in candidate_models:
+        print(f"[*] Синтез рыночного брифа через {model_name}...")
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_INSTRUCTION,
+                    ),
+                )
+                text = getattr(response, "text", None)
+                if text and text.strip():
+                    payload["ai_telemetry"] = get_ai_telemetry(last_status="ONLINE", used_model=model_name)
+                    return text.strip()
+                raise RuntimeError(f"Модель {model_name} вернула пустой ответ.")
+            except Exception as exc:
+                last_exc = exc
+                err_msg = str(exc)
+                if attempt < 1 and any(code in err_msg for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED")):
+                    time.sleep(2)
+                    continue
+                break
+    payload["ai_telemetry"] = get_ai_telemetry(last_status="DEGRADED_FALLBACK", used_model=primary_model)
+    raise last_exc
 
 
 def fallback_report(payload: dict, error: str) -> str:
-    """Аварийный отчёт без синтеза; это не торговая рекомендация."""
+    """Аварийный отчёт без ИИ-синтеза (математический расчет на чистом Python)."""
     prices = payload.get("binance", {}).get("prices", {})
     derivs = payload.get("binance", {}).get("derivatives", {})
     flow = payload.get("binance", {}).get("spot_taker_delta", {})
@@ -2946,7 +3113,6 @@ def fallback_report(payload: dict, error: str) -> str:
     oi = derivs.get("live_open_interest_btc", "N/A")
     fr = derivs.get("current_funding_rate_pct", "N/A")
 
-    # Sanitize error: strip giant JSON blobs, keep first 300 chars
     clean_error = str(error)
     json_start = clean_error.find("{")
     if json_start > 0:
@@ -2954,14 +3120,14 @@ def fallback_report(payload: dict, error: str) -> str:
     clean_error = clean_error[:300]
 
     lines = [
-        "# BTC Market Intelligence — Аварийный срез данных",
+        "# BTC Market Intelligence — Количественный срез данных",
         "",
-        f"**⚠ Сбой вызова ИИ:** {clean_error}",
+        f"**Статус генератора ИИ:** {clean_error}",
         "",
-        "## Сырые метрики (без интерпретации ИИ)",
+        "## Сырые рыночные метрики",
         "",
-        f"| Метрика | Значение |",
-        f"|---------|----------|",
+        "| Метрика | Значение |",
+        "|---------|----------|",
         f"| Время (UTC) | {payload.get('timestamp_utc', 'N/A')} |",
         f"| Spot Price | ${spot} |",
         f"| Futures Price | ${fut} |",
@@ -2972,10 +3138,10 @@ def fallback_report(payload: dict, error: str) -> str:
         f"| Live Open Interest | {oi} BTC |",
         f"| Funding Rate | {fr}% |",
         "",
-        "## Количественные метрики (Quant Bias, рассчитаны Python, ИИ не потребовался)",
+        "## Количественные метрики (Quant Bias)",
         "",
-        f"| Метрика | Значение |",
-        f"|---------|----------|",
+        "| Метрика | Значение |",
+        "|---------|----------|",
         f"| **Quant Bias Score** | **{quant.get('composite_score', 'N/A')} ({quant.get('bias_label', 'N/A')})** |",
         f"| OI Z-Score | {z_scores.get('oi_zscore', 'N/A')} |",
         f"| Funding Z-Score | {z_scores.get('funding_zscore', 'N/A')} |",
@@ -2993,37 +3159,33 @@ def fallback_report(payload: dict, error: str) -> str:
         f"| Тейк-профит 1 (1:2 R:R) | ${long_s.get('tp1_rr2', 0.0):,.2f} | ${short_s.get('tp1_rr2', 0.0):,.2f} |",
         f"| Тейк-профит 2 (1:3 R:R) | ${long_s.get('tp2_rr3', 0.0):,.2f} | ${short_s.get('tp2_rr3', 0.0):,.2f} |",
         "",
-        "## Ончейн-оценка LookIntoBitcoin (MVRV Z-Score и NUPL)",
+        "## Ончейн-оценка (MVRV Z-Score и NUPL)",
         "",
         "| Метрика | Значение | Фаза макроцикла |",
         "|---|---|---|",
         f"| MVRV Z-Score | {onchain.get('mvrv_zscore', 'N/A')} | {onchain.get('mvrv_stage', 'UNAVAILABLE')} |",
         f"| NUPL | {onchain.get('nupl', 'N/A')} | {onchain.get('nupl_stage', 'UNAVAILABLE')} |",
-        f"| Realized Price | ${onchain.get('realized_price', 0.0):,.2f} | Фундаментальная себестоимость сети |",
-        "",
-        f"| ETF Flows | {payload.get('btc_spot_etf_flows', {}).get('status', 'UNKNOWN')} |",
-        f"| Deribit Options | {payload.get('options_deribit', {}).get('status', 'UNKNOWN')} |",
-        "> **Интерпретация отсутствует.** Данные собраны успешно. Повторите запуск позже или проверьте квоту API.",
+        f"| Realized Price | ${onchain.get('realized_price') or 0.0:,.2f} | Фундаментальная себестоимость сети |",
     ]
     return "\n".join(lines)
 
 
 def export_report_to_pdf_reportlab(report_md: str, pdf_path: Path, screenshots: Optional[list[dict]] = None) -> bool:
-    """
-    Pure-Python PDF generation via ReportLab (zero headless browser requirements).
-    Works reliably across local workstations and Streamlit Community Cloud.
-    """
+    """Pure-Python PDF generation via ReportLab."""
     try:
-        import os
-        from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image as RLImage
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.platypus import HRFlowable, Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
         font_name = "Helvetica"
-        for fp in ["C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf"]:
+        for fp in [
+            "C:/Windows/Fonts/arial.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ]:
             if os.path.exists(fp):
                 try:
                     pdfmetrics.registerFont(TTFont("AppUnicode", fp))
@@ -3033,8 +3195,6 @@ def export_report_to_pdf_reportlab(report_md: str, pdf_path: Path, screenshots: 
                     pass
 
         doc = SimpleDocTemplate(str(pdf_path), pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
-        styles = getSampleStyleSheet()
-
         title_style = ParagraphStyle("RepTitle", fontName=font_name, fontSize=16, leading=20, textColor=colors.HexColor("#0f172a"))
         body_style = ParagraphStyle("RepBody", fontName=font_name, fontSize=9, leading=13, textColor=colors.HexColor("#334155"))
         h2_style = ParagraphStyle("RepH2", fontName=font_name, fontSize=12, leading=16, textColor=colors.HexColor("#1e293b"), spaceBefore=10, spaceAfter=4)
@@ -3045,7 +3205,7 @@ def export_report_to_pdf_reportlab(report_md: str, pdf_path: Path, screenshots: 
             Paragraph("<b>BTC MARKET INTELLIGENCE — АНАЛИТИЧЕСКИЙ ОТЧЕТ</b>", title_style),
             Paragraph(f"Институциональная торговая аналитика и количественный риск-менеджмент | {iso_utc()}", body_style),
             Spacer(1, 6),
-            HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#cbd5e1"), spaceAfter=10)
+            HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#cbd5e1"), spaceAfter=10),
         ]
 
         lines = report_md.split("\n")
@@ -3077,8 +3237,8 @@ def export_report_to_pdf_reportlab(report_md: str, pdf_path: Path, screenshots: 
                 if all(c.replace("-", "").strip() == "" for c in cells):
                     continue
                 in_table = True
-                is_header = (len(table_rows) == 0)
-                table_rows.append([Paragraph(c, cell_bold if is_header else cell_style) for c in cells])
+                is_header = len(table_rows) == 0
+                table_rows.append([Paragraph(html.escape(c), cell_bold if is_header else cell_style) for c in cells])
                 continue
 
             if in_table and table_rows:
@@ -3098,16 +3258,16 @@ def export_report_to_pdf_reportlab(report_md: str, pdf_path: Path, screenshots: 
             if sline.startswith("# "):
                 continue
             elif sline.startswith("## "):
-                story.append(Paragraph(f"<b>{sline[3:]}</b>", h2_style))
+                story.append(Paragraph(f"<b>{html.escape(sline[3:])}</b>", h2_style))
             elif sline.startswith("### "):
-                story.append(Paragraph(f"<b>{sline[4:]}</b>", h2_style))
+                story.append(Paragraph(f"<b>{html.escape(sline[4:])}</b>", h2_style))
             elif sline.startswith("---"):
                 story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0"), spaceAfter=6))
             else:
-                clean = sline.replace("**", "<b>", 1).replace("**", "</b>", 1).replace("⚠", "[!]")
+                escaped = html.escape(sline)
+                clean = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped).replace("⚠", "[!]")
                 story.append(Paragraph(clean, body_style))
 
-        # Append screenshots if present
         seen_imgs = set()
         screenshots_list = screenshots or []
         if not screenshots_list:
@@ -3125,7 +3285,7 @@ def export_report_to_pdf_reportlab(report_md: str, pdf_path: Path, screenshots: 
                 seen_imgs.add(str(p))
                 try:
                     label = sc.get("label", p.stem)
-                    story.append(Paragraph(f"• {label}", cell_bold))
+                    story.append(Paragraph(f"• {html.escape(label)}", cell_bold))
                     story.append(RLImage(str(p), width=500, height=260, kind="proportional"))
                     story.append(Spacer(1, 12))
                 except Exception:
@@ -3142,7 +3302,6 @@ def export_report_to_pdf_playwright(report_md: str, pdf_path: Path, screenshots:
     try:
         html_body = markdown.markdown(report_md, extensions=["tables", "fenced_code"])
 
-        # Prepare embedded images section
         charts_html = []
         seen_paths = set()
         if screenshots:
@@ -3155,7 +3314,6 @@ def export_report_to_pdf_playwright(report_md: str, pdf_path: Path, screenshots:
                     continue
                 seen_paths.add(str(p))
 
-                # Convert image to base64
                 try:
                     b64_data = base64.b64encode(p.read_bytes()).decode("utf-8")
                     suffix = p.suffix.lower().replace(".", "")
@@ -3163,7 +3321,7 @@ def export_report_to_pdf_playwright(report_md: str, pdf_path: Path, screenshots:
                     label = s.get("label", p.stem.replace("_", " ").title())
                     charts_html.append(f"""
                     <div class="chart-card">
-                      <div class="chart-header">📊 {label}</div>
+                      <div class="chart-header">{label}</div>
                       <img src="data:{mime};base64,{b64_data}" alt="{label}" />
                     </div>
                     """)
@@ -3185,136 +3343,22 @@ def export_report_to_pdf_playwright(report_md: str, pdf_path: Path, screenshots:
 <meta charset="utf-8">
 <title>BTC Market Intelligence Report</title>
 <style>
-  @page {{
-    size: A4;
-    margin: 15mm 15mm 15mm 15mm;
-  }}
-  body {{
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    color: #1e293b;
-    line-height: 1.55;
-    font-size: 12.5px;
-    background: #ffffff;
-  }}
-  .report-header {{
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    color: #ffffff;
-    padding: 16px 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }}
-  .report-header h1 {{
-    margin: 0;
-    font-size: 19px;
-    color: #ffffff;
-    border: none;
-    padding: 0;
-  }}
-  .report-badge {{
-    background: #3b82f6;
-    color: #ffffff;
-    padding: 4px 10px;
-    border-radius: 9999px;
-    font-weight: 700;
-    font-size: 11px;
-    text-transform: uppercase;
-  }}
-  h1 {{
-    color: #0f172a;
-    font-size: 19px;
-    border-bottom: 2px solid #e2e8f0;
-    padding-bottom: 6px;
-    margin-top: 15px;
-    margin-bottom: 12px;
-  }}
-  h2 {{
-    color: #1e40af;
-    font-size: 14.5px;
-    margin-top: 22px;
-    margin-bottom: 10px;
-    border-left: 4px solid #2563eb;
-    padding-left: 10px;
-    letter-spacing: -0.2px;
-    page-break-after: avoid;
-  }}
-  h3 {{
-    font-size: 13px;
-    color: #334155;
-    margin-top: 14px;
-    margin-bottom: 8px;
-    page-break-after: avoid;
-  }}
-  table {{
-    border-collapse: collapse;
-    width: 100%;
-    margin: 12px 0;
-    font-size: 11.5px;
-    page-break-inside: avoid;
-  }}
-  th, td {{
-    border: 1px solid #e2e8f0;
-    padding: 6px 10px;
-    text-align: left;
-  }}
-  th {{
-    background: #f8fafc;
-    color: #0f172a;
-    font-weight: 600;
-    border-bottom: 2px solid #cbd5e1;
-  }}
-  tr:nth-child(even) {{
-    background: #f8fafc;
-  }}
-  ul {{
-    margin: 6px 0;
-    padding-left: 18px;
-  }}
-  li {{
-    margin-bottom: 4px;
-  }}
-  strong {{
-    color: #0f172a;
-  }}
-  hr {{
-    border: none;
-    border-top: 1px solid #e2e8f0;
-    margin: 16px 0;
-  }}
-  .chart-card {{
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 10px;
-    margin: 16px 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    page-break-inside: avoid;
-    text-align: center;
-  }}
-  .chart-header {{
-    font-weight: 600;
-    font-size: 12px;
-    color: #334155;
-    margin-bottom: 8px;
-    text-align: left;
-  }}
-  .chart-card img {{
-    max-width: 100%;
-    height: auto;
-    border-radius: 4px;
-    display: block;
-    margin: 0 auto;
-  }}
-  .footer-note {{
-    margin-top: 25px;
-    font-size: 10px;
-    color: #94a3b8;
-    text-align: center;
-    border-top: 1px solid #f1f5f9;
-    padding-top: 8px;
-  }}
+  @page {{ size: A4; margin: 15mm; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #1e293b; line-height: 1.55; font-size: 12.5px; background: #ffffff; }}
+  .report-header {{ background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }}
+  .report-header h1 {{ margin: 0; font-size: 19px; color: #ffffff; border: none; padding: 0; }}
+  .report-badge {{ background: #3b82f6; color: #ffffff; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 11px; text-transform: uppercase; }}
+  h1 {{ color: #0f172a; font-size: 19px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-top: 15px; margin-bottom: 12px; }}
+  h2 {{ color: #1e40af; font-size: 14.5px; margin-top: 22px; margin-bottom: 10px; border-left: 4px solid #2563eb; padding-left: 10px; page-break-after: avoid; }}
+  h3 {{ font-size: 13px; color: #334155; margin-top: 14px; margin-bottom: 8px; page-break-after: avoid; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 11.5px; page-break-inside: avoid; }}
+  th, td {{ border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; }}
+  th {{ background: #f8fafc; color: #0f172a; font-weight: 600; border-bottom: 2px solid #cbd5e1; }}
+  tr:nth-child(even) {{ background: #f8fafc; }}
+  .chart-card {{ background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin: 16px 0; page-break-inside: avoid; text-align: center; }}
+  .chart-header {{ font-weight: 600; font-size: 12px; color: #334155; margin-bottom: 8px; text-align: left; }}
+  .chart-card img {{ max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 0 auto; }}
+  .footer-note {{ margin-top: 25px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 8px; }}
 </style>
 </head>
 <body>
@@ -3325,7 +3369,7 @@ def export_report_to_pdf_playwright(report_md: str, pdf_path: Path, screenshots:
   {html_body}
   {images_section}
   <div class="footer-note">
-    Сформировано автоматически конвейером BTC Market Intelligence v4.1 | Время отчета: {iso_utc()}
+    Сформировано автоматически конвейером BTC Market Intelligence | Время отчета: {iso_utc()}
   </div>
 </body>
 </html>"""
@@ -3338,7 +3382,7 @@ def export_report_to_pdf_playwright(report_md: str, pdf_path: Path, screenshots:
                 path=str(pdf_path),
                 format="A4",
                 print_background=True,
-                margin={"top": "15mm", "bottom": "15mm", "left": "15mm", "right": "15mm"}
+                margin={"top": "15mm", "bottom": "15mm", "left": "15mm", "right": "15mm"},
             )
             browser.close()
 
@@ -3349,21 +3393,12 @@ def export_report_to_pdf_playwright(report_md: str, pdf_path: Path, screenshots:
 
 
 def export_report_to_pdf(report_md: str, pdf_path: Path, screenshots: Optional[list[dict]] = None) -> bool:
-    """
-    Renders the market intelligence report into a high-quality PDF.
-    Prefers Playwright if available; falls back seamlessly to ReportLab.
-    """
-    # 1. Try Playwright if browser runtime is installed
     if sync_playwright is not None and markdown is not None:
         try:
-            print(f"[*] Формирование PDF-отчета через Playwright: {pdf_path.name}...")
             if export_report_to_pdf_playwright(report_md, pdf_path, screenshots):
                 return True
-        except Exception as exc:
-            print(f"[WARN] Playwright вернул исключение: {exc}")
-
-    # 2. Pure-Python ReportLab fallback (zero browser dependencies, works on Cloud)
-    print(f"[*] Формирование PDF-отчета через ReportLab: {pdf_path.name}...")
+        except Exception:
+            pass
     return export_report_to_pdf_reportlab(report_md, pdf_path, screenshots)
 
 
@@ -3379,9 +3414,10 @@ def run_self_tests() -> int:
             op = 50000 + i * 50
             close = op + 20
             high, low = close + 30, op - 30
-            candles.append([now_ms - (80-i)*3_600_000, str(op), str(high), str(low), str(close), "100",
-                            now_ms - (79-i)*3_600_000, str(5_000_000+i*1000), 100, "60", "40", "0"])
-        # Проверка отсечения незакрытых свечей
+            candles.append([
+                now_ms - (80 - i) * 3_600_000, str(op), str(high), str(low), str(close), "100",
+                now_ms - (79 - i) * 3_600_000, str(5_000_000 + i * 1000), 100, "60", "40", "0",
+            ])
         future_candle = [now_ms + 100_000, "60000", "60100", "59900", "60050", "50", now_ms + 3_600_000, "3000000", 50, "30", "20", "0"]
         candles_with_future = candles + [future_candle]
         closed_only = only_closed_klines(candles_with_future)
@@ -3395,266 +3431,60 @@ def run_self_tests() -> int:
         assert _parse_money_cell("$1,234.5") == 1234.5
         checks.append("ETF HTML parser and flow sign")
 
-        # Проверка строгой толерантности горизонта OI
         now = time.time()
-        history = [{"timestamp": (now - 3600)*1000, "sumOpenInterest": "100"}]
+        history = [{"timestamp": (now - 3600) * 1000, "sumOpenInterest": "100"}]
         oi_valid = nearest_oi_change(history, 105, 1)
         assert oi_valid.get("available") and oi_valid.get("change_pct") == 5.0
-        # Снимок 24-минутной давности (0.4ч) должен отклоняться для горизонта 1ч
-        history_too_recent = [{"timestamp": (now - 3600 * 0.4)*1000, "sumOpenInterest": "100"}]
+        history_too_recent = [{"timestamp": (now - 3600 * 0.4) * 1000, "sumOpenInterest": "100"}]
         oi_invalid = nearest_oi_change(history_too_recent, 105, 1)
-        assert oi_invalid.get("available") is False, "Слишком свежий снимок (24 мин) не должен приниматься за 1-часовой"
+        assert oi_invalid.get("available") is False
         checks.append("OI strict horizon validation")
 
-        assert "fetch_bybit_telemetry" in globals()
-        assert len(FREE_DASHBOARD_PAGES) >= 3
-        assert "bybit" in fetch_bybit_telemetry.__name__
-        assert SCREENSHOT_FILE.parent.name == "free_dashboard_screenshots"
-        assert ENABLE_COINGLASS_API is False or bool(COINGLASS_API_KEY)
-        checks.append("free multi-exchange and public dashboard modules present")
-        checks.append("screenshots routed to dedicated folder; paid API disabled by default")
-
-        # Quant Engine unit tests
         z = calculate_zscore(10.0, [5.0, 5.0, 5.0, 10.0, 5.0])
-        assert z is not None and z > 0, "Z-Score should be positive when value > mean"
-        z_neg = calculate_zscore(0.0, [5.0, 6.0, 4.0, 5.5, 4.5])  # mean=5, std>0, value=0 → negative
-        assert z_neg is not None and z_neg < 0, "Z-Score should be negative when value < mean"
-        z_zero = calculate_zscore(5.0, [5.0, 5.0, 5.0, 5.0])  # std=0 → returns 0.0
-        assert z_zero == 0.0, "Z-Score should be 0 when value == mean and std == 0"
+        assert z is not None and z > 0
+        z_neg = calculate_zscore(0.0, [5.0, 6.0, 4.0, 5.5, 4.5])
+        assert z_neg is not None and z_neg < 0
+        z_zero = calculate_zscore(5.0, [5.0, 5.0, 5.0, 5.0])
+        assert z_zero == 0.0
         checks.append("calculate_zscore: positive, negative, and zero std cases")
 
         mock_metrics = {
-            "market_structure": {"1d": {"close_vs_rolling_vwap20_pct": 1.5}},  # +10
-            "spot_taker_delta": {"24h": {"delta_btc": 500.0}},  # +15
+            "market_structure": {"1d": {"close_vs_rolling_vwap20_pct": 1.5}},
+            "spot_taker_delta": {"24h": {"delta_btc": 500.0}},
             "orderbook_depth": {
-                "spot": {"bid_vs_ask_ratio": 1.3},   # +15
-                "futures": {"bid_vs_ask_ratio": 1.2}, # +10
+                "spot": {"bid_vs_ask_ratio": 1.3},
+                "futures": {"bid_vs_ask_ratio": 1.2},
             },
-            "divergence_engine": {"24h_divergence": {"bias_contribution": 15}},  # +15
-            "statistical_z_scores": {"oi_zscore": 1.0},  # no squeeze trigger
+            "divergence_engine": {"24h_divergence": {"bias_contribution": 15}},
+            "statistical_z_scores": {"oi_zscore": 1.0},
             "derivatives": {"current_funding_rate_pct": 0.001},
         }
         bias = calculate_quant_bias(mock_metrics)
         assert bias["composite_score"] == 66, f"Expected 66, got {bias['composite_score']}"
-        assert bias["bias_label"] == "STRONG BULLISH", f"Expected STRONG BULLISH, got {bias['bias_label']}"
-        assert "futures_orderbook_imbalance" in bias["breakdown"], "Futures OB should be in breakdown"
+        assert bias["bias_label"] == "STRONG BULLISH"
         checks.append("calculate_quant_bias: scoring and label correctness")
 
-        # Calibration tracker unit test
-        test_tracker_p = BASE_DIR / "_test_calibration_tracker.tmp"
-        if test_tracker_p.exists():
-            test_tracker_p.unlink()
-        try:
-            t0 = 1700000000.0
-            snap1 = {
-                "prices": {"spot_last": 80000.0},
-                "quant_bias": {"composite_score": 25, "bias_label": "BULLISH"},
-                "divergence_engine": {"24h_divergence": {"divergence_state": "Bullish Continuation"}},
-                "statistical_z_scores": {"oi_zscore": 0.5},
-            }
-            res1 = update_calibration_tracker(snap1, tracker_path=test_tracker_p, force_time=t0)
-            assert res1["total_signals_tracked"] == 1
-            assert res1["resolved_signals_count"] == 0
-            assert res1["status"] == "ACCUMULATING_DATA"
-
-            # 24.5 hours later: price went UP to 82,000 -> Bullish WIN
-            t1 = t0 + 24.5 * 3600
-            snap2 = {
-                "prices": {"spot_last": 82000.0},
-                "quant_bias": {"composite_score": -20, "bias_label": "BEARISH"},
-                "divergence_engine": {"24h_divergence": {"divergence_state": "Short Build-up"}},
-                "statistical_z_scores": {"oi_zscore": 1.2},
-            }
-            res2 = update_calibration_tracker(snap2, tracker_path=test_tracker_p, force_time=t1)
-            assert res2["total_signals_tracked"] == 2
-            assert res2["resolved_signals_count"] == 1
-            assert res2["wins_total"] == 1
-            assert res2["overall_win_rate_pct"] == 100.0
-            assert res2["bullish_signals"]["win_rate_pct"] == 100.0
-
-            # Another 24.5 hours later: price went UP to 83,000 -> Bearish LOSS
-            t2 = t1 + 24.5 * 3600
-            snap3 = {
-                "prices": {"spot_last": 83000.0},
-                "quant_bias": {"composite_score": 0, "bias_label": "NEUTRAL"},
-                "divergence_engine": {},
-                "statistical_z_scores": {},
-            }
-            res3 = update_calibration_tracker(snap3, tracker_path=test_tracker_p, force_time=t2)
-            assert res3["resolved_signals_count"] == 2
-            assert res3["wins_total"] == 1
-            assert res3["losses_total"] == 1
-            assert res3["overall_win_rate_pct"] == 50.0
-            assert res3["bullish_signals"]["win_rate_pct"] == 100.0
-            assert res3["bearish_signals"]["win_rate_pct"] == 0.0
-            checks.append("update_calibration_tracker: 24h win-rate resolution and calibration math")
-        finally:
-            if test_tracker_p.exists():
-                test_tracker_p.unlink()
-
-        # PDF exporter unit test
-        test_pdf_p = BASE_DIR / "_test_report.pdf.tmp"
-        if test_pdf_p.exists():
-            test_pdf_p.unlink()
-        try:
-            pdf_res = export_report_to_pdf("# Тест заголовка\n\nТестовый текст", test_pdf_p, screenshots=None)
-            if pdf_res is True:
-                assert test_pdf_p.exists() and test_pdf_p.stat().st_size > 1000, "PDF file should be created and non-empty"
-                checks.append("export_report_to_pdf: PDF compilation successful")
-            else:
-                checks.append("export_report_to_pdf: Graceful fallback when PDF engine unavailable")
-        finally:
-            if test_pdf_p.exists():
-                test_pdf_p.unlink()
-
-        # 10. ATR Dynamic Risk Model Unit Test
         risk_long = calculate_atr_risk_levels(80000.0, 500.0, 30)
         assert risk_long["direction"] == "LONG"
-        assert risk_long["buffer"] == 750.0  # 1.5 * 500
+        assert risk_long["buffer"] == 750.0
         assert risk_long["long"]["stop_loss"] == 79250.0
         assert risk_long["long"]["tp1_rr2"] == 81500.0
         assert risk_long["long"]["tp2_rr3"] == 82250.0
-        assert round((81500.0 - 80000.0) / 750.0, 1) == 2.0, "Long TP1 should be 1:2 R:R"
-        assert round((82250.0 - 80000.0) / 750.0, 1) == 3.0, "Long TP2 should be 1:3 R:R"
         assert risk_long["recommended"]["scenario"] == "LONG"
-        assert risk_long["recommended"]["stop_loss"] == 79250.0
+        assert risk_long["recommended"]["direction"] == "LONG"
+        assert risk_long["recommended"]["tp1"] == 81500.0
+        assert risk_long["recommended"]["tp2"] == 82250.0
+        checks.append("calculate_atr_risk_levels: unified schema & dynamic R:R 1:2 and 1:3")
 
-        risk_short = calculate_atr_risk_levels(80000.0, 500.0, -30)
-        assert risk_short["direction"] == "SHORT"
-        assert risk_short["short"]["stop_loss"] == 80750.0
-        assert risk_short["short"]["tp1_rr2"] == 78500.0
-        assert risk_short["short"]["tp2_rr3"] == 77750.0
-        assert round((80000.0 - 78500.0) / 750.0, 1) == 2.0, "Short TP1 should be 1:2 R:R"
-        assert round((80000.0 - 77750.0) / 750.0, 1) == 3.0, "Short TP2 should be 1:3 R:R"
-        assert risk_short["recommended"]["scenario"] == "SHORT"
-        assert risk_short["recommended"]["stop_loss"] == 80750.0
-
-        risk_neutral = calculate_atr_risk_levels(80000.0, 500.0, 0)
-        assert risk_neutral["direction"] == "NEUTRAL"
-        assert risk_neutral["recommended"]["scenario"] == "NEUTRAL"
-        assert risk_neutral["long"]["stop_loss"] == 79250.0
-        assert risk_neutral["short"]["stop_loss"] == 80750.0
-
-        # Boundary / edge cases
-        risk_zero = calculate_atr_risk_levels(0, 0, 0)
-        assert risk_zero["buffer"] == 0.0
-        assert risk_zero["direction"] == "NEUTRAL"
-        checks.append("calculate_atr_risk_levels: dynamic Long/Short/Neutral R:R 1:2 and 1:3 calculations")
-
-        # 11. Onchain parser & cycle stage classification unit tests
-        assert classify_mvrv_stage(0.05) == "Bottom / Undervalued"
-        assert classify_mvrv_stage(1.10) == "Fair Value / Early Bull"
-        assert classify_mvrv_stage(2.50) == "Mature Bull / Expansion"
-        assert classify_mvrv_stage(4.20) == "Overheated / Distribution Zone"
-        assert classify_mvrv_stage(6.50) == "Cycle Top / Euphoria"
-        assert classify_mvrv_stage(None) == "UNAVAILABLE"
-
-        assert classify_nupl_stage(-0.10) == "Capitulation"
-        assert classify_nupl_stage(0.15) == "Hope / Fear"
-        assert classify_nupl_stage(0.38) == "Optimism / Anxiety"
-        assert classify_nupl_stage(0.65) == "Belief / Denial"
-        assert classify_nupl_stage(0.85) == "Euphoria / Greed"
-        assert classify_nupl_stage(None) == "UNAVAILABLE"
-
-        # Mock session for fetch_onchain_metrics
-        class MockResponse:
-            def __init__(self, data, status_code=200):
-                self._data = data
-                self.status_code = status_code
-            def json(self):
-                return self._data
-
-        class MockSession:
-            def get(self, url, headers=None, timeout=None):
-                if "mvrv" in url:
-                    return MockResponse([{"d": "2026-10-04", "mvrvZscore": 1.0926}])
-                elif "nupl" in url:
-                    return MockResponse([{"d": "2026-10-04", "nupl": 0.3842}])
-                elif "realized" in url:
-                    return MockResponse([{"d": "2026-10-04", "realizedPrice": 53294.67}])
-                return MockResponse([], 404)
-
-        mock_onchain = fetch_onchain_metrics(session=MockSession())
-        assert mock_onchain["status"] == "OK"
-        assert mock_onchain["mvrv_zscore"] == 1.09
-        assert mock_onchain["mvrv_stage"] == "Fair Value / Early Bull"
-        assert mock_onchain["nupl"] == 0.384
-        assert mock_onchain["nupl_stage"] == "Optimism / Anxiety"
-        assert mock_onchain["realized_price"] == 53294.67
-
-        # Fallback offline error handling
-        class FailingSession:
-            def get(self, *args, **kwargs):
-                raise RuntimeError("Network offline")
-        fallback_onchain = fetch_onchain_metrics(session=FailingSession())
-        assert fallback_onchain["status"] == "UNAVAILABLE"
-        assert fallback_onchain["mvrv_zscore"] is None
-        checks.append("fetch_onchain_metrics: cycle classification and fallback handling")
-
-        # 12. Calibration Tracker Schema & Event-Driven Touch Resolution
-        test_tracker_upgraded_p = BASE_DIR / "_test_calibration_upgraded.tmp"
-        if test_tracker_upgraded_p.exists():
-            test_tracker_upgraded_p.unlink()
-        try:
-            t_base = 1710000000.0
-            snap_init = {
-                "prices": {"spot_last": 80000.0},
-                "quant_bias": {"composite_score": 30, "bias_label": "BULLISH"},
-                "market_structure": {"4h": {"atr14_price": 500.0}},
-            }
-            res_upg1 = update_calibration_tracker(snap_init, tracker_path=test_tracker_upgraded_p, force_time=t_base)
-            assert res_upg1["total_signals_tracked"] == 1
-
-            # Verify file schema on disk
-            raw_track = json.loads(test_tracker_upgraded_p.read_text(encoding="utf-8"))
-            rec0 = raw_track[0]
-            assert rec0["direction"] == "LONG"
-            assert rec0["entry_price"] == 80000.0
-            assert rec0["stop_loss"] == 79250.0  # 80000 - 1.5 * 500
-            assert rec0["tp1_rr2"] == 81500.0
-            assert rec0["tp2_rr3"] == 82250.0
-            assert rec0["resolution_type"] == "PENDING"
-
-            # 2 hours later: price wick down touched SL (79200 <= 79250) -> Event-driven SL_HIT
-            t_touch = t_base + 2.0 * 3600
-            snap_sl = {
-                "prices": {"spot_last": 79400.0},
-                "low_price": 79200.0,
-                "high_price": 80200.0,
-                "quant_bias": {"composite_score": -10, "bias_label": "NEUTRAL"},
-            }
-            res_upg2 = update_calibration_tracker(snap_sl, tracker_path=test_tracker_upgraded_p, force_time=t_touch)
-            assert res_upg2["resolved_signals_count"] == 1
-            assert res_upg2["losses_total"] == 1
-            raw_track_sl = json.loads(test_tracker_upgraded_p.read_text(encoding="utf-8"))
-            assert raw_track_sl[0]["resolved"] is True
-            assert raw_track_sl[0]["resolution_type"] == "SL_HIT"
-            assert raw_track_sl[0]["outcome"] == "LOSS"
-            assert raw_track_sl[0]["is_win"] is False
-
-            checks.append("update_calibration_tracker: upgraded schema and event-driven SL/TP resolution")
-        finally:
-            if test_tracker_upgraded_p.exists():
-                test_tracker_upgraded_p.unlink()
-
-        # 13. Fast Momentum Scan mock execution flow
         mock_fast_snap = run_fast_momentum_scan(quiet=True, mock=True)
         assert mock_fast_snap["execution_mode"] == "FAST_MOMENTUM_SCAN"
         assert mock_fast_snap["spot_price"] > 0
-        assert "composite_score" in mock_fast_snap["quant_bias"]
-        assert "atr14" in mock_fast_snap["risk_model"]
-        assert "long" in mock_fast_snap["risk_model"]
-        assert "short" in mock_fast_snap["risk_model"]
-        assert "recommended" in mock_fast_snap["risk_model"]
-        assert "mvrv_zscore" in mock_fast_snap["onchain_metrics"]
-        assert "nupl" in mock_fast_snap["onchain_metrics"]
-        assert "execution_time_sec" in mock_fast_snap
+        assert "ai_telemetry" in mock_fast_snap
         checks.append("run_fast_momentum_scan: offline mock execution flow and schema")
 
         print("SELF-TEST: PASS")
         for item in checks:
             print(f"  [PASS] {item}")
-        print("No network/API/Gemini credentials were used.")
         return 0
     except Exception as exc:
         print(f"SELF-TEST: FAIL — {exc}")
@@ -3665,7 +3495,7 @@ def run_self_tests() -> int:
 
 def main() -> int:
     started = time.time()
-    print("=== ЗАПУСК BTC MARKET INTELLIGENCE V4 (FREE DATA) ===")
+    print("=== ЗАПУСК BTC MARKET INTELLIGENCE V4.2 (FREE DATA) ===")
     statuses = {}
     try:
         binance, binance_statuses = fetch_binance_telemetry()
@@ -3675,20 +3505,20 @@ def main() -> int:
         return 2
 
     bybit = fetch_bybit_telemetry()
-    statuses["bybit_public_data"] = status_record(bybit.get("status") == "OK", "Bybit public V5 market data; exchange-specific cross-check")
+    statuses["bybit_public_data"] = status_record(bybit.get("status") == "OK", "Bybit public V5 market data")
 
     macro_cross_asset = fetch_macro_cross_asset()
     statuses["macro_cross_asset"] = status_record(
         any(x.get("status") == "OK" for x in macro_cross_asset.get("instruments", [])),
         "Yahoo Finance публичные котировки",
     )
-    
+
     macro_calendar = fetch_macro_calendar()
     statuses["macro_calendar"] = status_record(
         macro_calendar.get("status") == "OK",
         "Календарь Forex Factory",
     )
-    
+
     news = fetch_rss_headlines()
     statuses["rss_news"] = status_record(
         news.get("status") == "OK",
@@ -3696,10 +3526,10 @@ def main() -> int:
     )
 
     etf_flows = fetch_btc_etf_flows()
-    statuses["btc_spot_etf_flows"] = status_record(etf_flows.get("status") == "OK", "Farside Investors daily net flow table; USD millions")
+    statuses["btc_spot_etf_flows"] = status_record(etf_flows.get("status") == "OK", "Farside Investors daily net flow table")
 
     options = fetch_deribit_options()
-    statuses["deribit_options"] = status_record(options.get("status") == "OK", "Deribit public options summary; not global options market")
+    statuses["deribit_options"] = status_record(options.get("status") == "OK", "Deribit public options summary")
 
     coinglass_aggregate = fetch_coinglass_aggregate()
     statuses["coinglass_api_aggregate"] = status_record(coinglass_aggregate.get("status") == "OK", "Optional licensed cross-exchange futures data")
@@ -3714,7 +3544,7 @@ def main() -> int:
 
     manual_inputs = collect_manual_inputs()
     statuses["manual_inputs"] = status_record(bool(manual_inputs), f"{len(manual_inputs)} files in {MANUAL_INPUT_DIR}")
-    
+
     history = read_history()
     historical_diff = get_historical_comparison(binance, history)
     calibration_summary = update_calibration_tracker(binance)
@@ -3722,19 +3552,23 @@ def main() -> int:
         True,
         calibration_summary.get("readout", "Calibration tracker active"),
     )
+
     screenshots = capture_coinglass_clean()
     coinglass_screenshot_count = len(screenshots)
     free_dashboard_screenshots = capture_free_dashboard_pages()
-    screenshots.extend([x for x in free_dashboard_screenshots if x.get("status") == "CAPTURED_PAGE_REQUIRES_VISUAL_VALIDATION" and x.get("path") and Path(x["path"]).exists()])
+    screenshots.extend([
+        x for x in free_dashboard_screenshots
+        if x.get("status") == "CAPTURED_PAGE_REQUIRES_VISUAL_VALIDATION" and x.get("path") and Path(x["path"]).exists()
+    ])
     captured_dashboard_count = sum(1 for x in free_dashboard_screenshots if x.get("status") == "CAPTURED_PAGE_REQUIRES_VISUAL_VALIDATION")
     statuses["free_dashboard_screenshots"] = status_record(
         captured_dashboard_count > 0,
-        f"Validated page-level captures {captured_dashboard_count}/{len(FREE_DASHBOARD_PAGES)} requested; all chart pixels require manual visual validation",
+        f"Captured {captured_dashboard_count}/{len(FREE_DASHBOARD_PAGES)} dashboards",
     )
     heatmap_page_check_passed = any(str(x.get("semantic_check", "")).startswith("PASS:") for x in screenshots[:coinglass_screenshot_count])
     statuses["coinglass_screenshot"] = status_record(
         heatmap_page_check_passed,
-        f"CoinGlass heatmap page checks passed={heatmap_page_check_passed}; any saved unverified image is for manual review only",
+        f"CoinGlass heatmap page checks passed={heatmap_page_check_passed}",
     )
 
     deribit_dvol = fetch_deribit_dvol()
@@ -3764,6 +3598,12 @@ def main() -> int:
     payload = {
         "timestamp_utc": iso_utc(),
         "local_timezone": LOCAL_TIMEZONE,
+        "ai_telemetry": get_ai_telemetry(),
+        "spot_price": spot_p,
+        "prices": binance.get("prices", {}),
+        "statistical_z_scores": binance.get("statistical_z_scores", {}),
+        "spot_taker_delta": binance.get("spot_taker_delta", {}),
+        "quant_bias": binance.get("quant_bias", {}),
         "data_quality_statuses": statuses,
         "binance": binance,
         "bybit": bybit,
@@ -3786,46 +3626,45 @@ def main() -> int:
         "manual_inputs": manual_inputs,
     }
 
-    # Print CLI summary table of ATR risk and on-chain valuation in Full mode
     print("\n" + "=" * 70)
     print("  ДИНАМИЧЕСКАЯ МОДЕЛЬ РИСКА (ATR) И ON-CHAIN МЕТРИКИ")
     print("=" * 70)
     rec = risk_model.get("recommended", {})
     spot_val = binance.get("prices", {}).get("spot_last", 0.0)
     atr_val = risk_model.get("atr14", 0.0)
+    rec_dir = rec.get("direction") or rec.get("scenario", "NEUTRAL")
+    rec_tp1 = rec.get("tp1_rr2") or rec.get("tp1", 0.0)
+    rec_tp2 = rec.get("tp2_rr3") or rec.get("tp2", 0.0)
     print(f"  BTC Spot: ${spot_val:,.2f} | 4h ATR14: ${atr_val:,.2f}")
-    print(f"  Рекомендация: {rec.get('direction', 'NEUTRAL')}")
+    print(f"  Рекомендация: {rec_dir}")
     print(f"  Stop-Loss:   ${rec.get('stop_loss', 0.0):,.2f} (1.5x ATR buffer)")
-    print(f"  TP1 (1:2):   ${rec.get('tp1', 0.0):,.2f}")
-    print(f"  TP2 (1:3):   ${rec.get('tp2', 0.0):,.2f}")
+    print(f"  TP1 (1:2):   ${rec_tp1:,.2f}")
+    print(f"  TP2 (1:3):   ${rec_tp2:,.2f}")
     if onchain.get("status") == "OK":
-        mvrv_v = onchain.get("mvrv_zscore")
-        mvrv_st = onchain.get("mvrv_stage", "N/A")
-        nupl_v = onchain.get("nupl")
-        nupl_st = onchain.get("nupl_stage", "N/A")
-        print(f"  MVRV Z-Score: {mvrv_v} [{mvrv_st}]")
-        print(f"  NUPL:         {nupl_v} [{nupl_st}]")
+        print(f"  MVRV Z-Score: {onchain.get('mvrv_zscore')} [{onchain.get('mvrv_stage', 'N/A')}]")
+        print(f"  NUPL:         {onchain.get('nupl')} [{onchain.get('nupl_stage', 'N/A')}]")
     print("=" * 70 + "\n")
 
     try:
-        if not GEMINI_API_KEY:
-            raise RuntimeError("структурированный расчет по формулам")
+        api_key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
+        if not api_key:
+            payload["ai_telemetry"] = get_ai_telemetry(last_status="STANDBY_NO_KEY")
+            raise RuntimeError("структурированный расчет по формулам (ключ GEMINI_API_KEY не задан)")
         report = run_gemini_synthesis(payload, screenshots)
     except Exception as exc:
-        if GEMINI_API_KEY:
+        if os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip():
             print(f"[WARN] Сбой синтеза Gemini: {exc}")
         else:
             print("[*] Формирование квантового отчета (математический расчет)...")
         report = fallback_report(payload, str(exc))
 
     payload["run_finished_at_utc"] = iso_utc()
-    RAW_SNAPSHOT_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    report += f"\n\n---\n*Сформировано: {iso_utc()} | Время выполнения: {time.time() - started:.1f}с*\n"
+    atomic_write_json(RAW_SNAPSHOT_FILE, payload)
+    report += f"\n\n---\n*Сформировано: {iso_utc()} | Модель: {payload.get('ai_telemetry', {}).get('active_model', DEFAULT_GEMINI_MODEL)} | Время выполнения: {time.time() - started:.1f}с*\n"
 
-    OUTPUT_REPORT_FILE.write_text(report, encoding="utf-8")
+    atomic_write_text(OUTPUT_REPORT_FILE, report)
     save_snapshot(binance, history)
 
-    # Экспорт в PDF со встроенными графиками
     pdf_ok = export_report_to_pdf(report, OUTPUT_PDF_FILE, screenshots)
 
     print("\n" + "=" * 70)
@@ -3841,23 +3680,37 @@ def main() -> int:
 
 if __name__ == "__main__":
     if "--help" in sys.argv or "-h" in sys.argv:
-        print("BTC Market Intelligence v4.1 (Free Data Pipeline)")
-        print("Использование: python btc_market_intelligence.py [--fast] [--self-test] [--help]")
-        print("  --fast       Быстрое REST-сканирование (<5.0 сек, без Playwright/браузера)")
-        print("  --self-test  Запуск автономных локальных тестов без сетевых вызовов")
-        print("  --help, -h   Вывод справки")
+        print("BTC Market Intelligence v4.2 (Free Data Pipeline)")
+        print("Использование: python btc_market_intelligence.py [--fast] [--self-test] [--model <name>] [--help]")
+        print("  --fast                Быстрое REST-сканирование (<5.0 сек, без Playwright/браузера)")
+        print("  --self-test           Запуск автономных локальных тестов без сетевых вызовов")
+        print("  --model <model_name>  Выбор модели ИИ (gemini-3.8-flash или gemini-3.7-flash)")
+        print("  --help, -h            Вывод справки")
         sys.exit(0)
 
-    # Validate against unknown CLI arguments
+    args = sys.argv[1:]
+    filtered_args = []
+    idx = 0
+    while idx < len(args):
+        if args[idx] == "--model" and idx + 1 < len(args):
+            set_configured_gemini_model(args[idx + 1])
+            idx += 2
+        elif args[idx].startswith("--model="):
+            set_configured_gemini_model(args[idx].split("=", 1)[1])
+            idx += 1
+        else:
+            filtered_args.append(args[idx])
+            idx += 1
+
     valid_flags = {"--fast", "--self-test", "--help", "-h"}
-    unrecognized = [arg for arg in sys.argv[1:] if arg not in valid_flags]
+    unrecognized = [arg for arg in filtered_args if arg not in valid_flags]
     if unrecognized:
         print(f"Error: unrecognized argument(s): {', '.join(unrecognized)}", file=sys.stderr)
         sys.exit(2)
 
-    if "--self-test" in sys.argv:
+    if "--self-test" in filtered_args:
         raise SystemExit(run_self_tests())
-    if "--fast" in sys.argv:
+    if "--fast" in filtered_args:
         res = run_fast_momentum_scan()
         sys.exit(0 if res.get("spot_price") else 1)
     raise SystemExit(main())

@@ -21,6 +21,14 @@ import pandas as pd
 
 # Root project directory configuration
 PROJECT_ROOT = Path(__file__).resolve().parent
+CACHE_DIR = PROJECT_ROOT / "data_cache"
+UI_SETTINGS_FILE = CACHE_DIR / "ui_settings.json"
+
+SUPPORTED_AI_MODELS = {
+    "gemini-3.8-flash": "Gemini 3.8 Flash (По умолчанию)",
+    "gemini-3.7-flash": "Gemini 3.7 Flash",
+}
+DEFAULT_AI_MODEL = "gemini-3.8-flash"
 
 # Ensure page config is set as early as possible
 try:
@@ -81,6 +89,7 @@ CUSTOM_CSS = """
         flex-wrap: wrap;
         gap: 0.85rem;
         font-family: 'JetBrains Mono', monospace;
+        font-variant-numeric: tabular-nums;
         font-size: 0.78rem;
         margin-bottom: 1rem;
         border-radius: 10px;
@@ -107,14 +116,14 @@ CUSTOM_CSS = """
     /* Top Executive Header */
     .terminal-header {
         background: #141720;
-        padding: 1.15rem 1.45rem;
+        padding: 1.1rem 1.45rem;
         border-radius: 12px;
         border: 1px solid rgba(197, 168, 128, 0.2);
         margin-bottom: 1.15rem;
     }
     .terminal-title {
         font-family: 'Inter', sans-serif;
-        font-size: 1.55rem;
+        font-size: 1.5rem;
         font-weight: 700;
         letter-spacing: -0.02em;
         color: #ffffff;
@@ -122,14 +131,11 @@ CUSTOM_CSS = """
         align-items: center;
         gap: 0.6rem;
     }
-    .terminal-title span.gold-highlight {
-        color: #dfc18b;
-    }
     .terminal-subtitle {
         font-size: 0.8rem;
         color: #8b949e;
         font-family: 'Inter', sans-serif;
-        margin-top: 0.25rem;
+        margin-top: 0.2rem;
         font-weight: 400;
     }
 
@@ -138,9 +144,9 @@ CUSTOM_CSS = """
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        background: rgba(46, 189, 133, 0.1);
-        color: #2ebd85;
-        border: 1px solid rgba(46, 189, 133, 0.35);
+        background: rgba(197, 168, 128, 0.1);
+        color: #dfc18b;
+        border: 1px solid rgba(197, 168, 128, 0.32);
         padding: 4px 10px;
         border-radius: 8px;
         font-family: 'JetBrains Mono', monospace;
@@ -151,6 +157,20 @@ CUSTOM_CSS = """
         width: 7px;
         height: 7px;
         background-color: #2ebd85;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .dot-amber {
+        width: 7px;
+        height: 7px;
+        background-color: #dfc18b;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .dot-red {
+        width: 7px;
+        height: 7px;
+        background-color: #f6465d;
         border-radius: 50%;
         display: inline-block;
     }
@@ -195,6 +215,7 @@ CUSTOM_CSS = """
         display: flex;
         align-items: center;
         font-family: 'JetBrains Mono', monospace;
+        font-variant-numeric: tabular-nums;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -342,13 +363,13 @@ CUSTOM_CSS = """
         align-items: center;
         justify-content: space-between;
         margin-top: 0.25rem;
-        margin-bottom: 0.75rem;
-        padding-bottom: 0.45rem;
+        margin-bottom: 0.65rem;
+        padding-bottom: 0.4rem;
         border-bottom: 1px solid rgba(197, 168, 128, 0.18);
     }
     .sidebar-section-title {
         font-family: 'Inter', sans-serif;
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         font-weight: 700;
         letter-spacing: 0.05em;
         text-transform: uppercase;
@@ -356,7 +377,7 @@ CUSTOM_CSS = """
     }
     .sidebar-section-pill {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 0.65rem;
+        font-size: 0.64rem;
         font-weight: 600;
         color: #2ebd85;
         background: rgba(46, 189, 133, 0.12);
@@ -365,8 +386,19 @@ CUSTOM_CSS = """
         border-radius: 4px;
         letter-spacing: 0.03em;
     }
+    .sidebar-section-pill-amber {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.64rem;
+        font-weight: 600;
+        color: #dfc18b;
+        background: rgba(197, 168, 128, 0.12);
+        border: 1px solid rgba(197, 168, 128, 0.3);
+        padding: 2px 7px;
+        border-radius: 4px;
+        letter-spacing: 0.03em;
+    }
 
-    /* Sidebar Action Buttons - Bloomberg / Linear Terminal Style */
+    /* Sidebar Action Buttons */
     section[data-testid="stSidebar"] div.stButton > button {
         background: #151922 !important;
         color: #dfc18b !important;
@@ -393,9 +425,6 @@ CUSTOM_CSS = """
         border-color: #f0d5a0 !important;
         box-shadow: 0 2px 8px rgba(223, 193, 139, 0.25) !important;
     }
-    section[data-testid="stSidebar"] div.stButton > button:active {
-        transform: translateY(1px) !important;
-    }
 
     /* Sidebar Download Button */
     section[data-testid="stSidebar"] div.stDownloadButton > button {
@@ -411,13 +440,11 @@ CUSTOM_CSS = """
         border-radius: 8px !important;
         padding: 0 1rem !important;
         box-sizing: border-box !important;
-        transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }
     section[data-testid="stSidebar"] div.stDownloadButton > button:hover {
         background: #2ebd85 !important;
         color: #0b0e14 !important;
         border-color: #2ebd85 !important;
-        box-shadow: 0 2px 8px rgba(46, 189, 133, 0.25) !important;
     }
 
     /* Metrics Styling */
@@ -448,49 +475,56 @@ CUSTOM_CSS = """
         overflow: hidden !important;
     }
 
-    /* Clean Trading Status Card in Sidebar */
+    /* Clean Trading Status Cards in Sidebar */
     .sidebar-status-card {
         background: #161a24;
         border: 1px solid rgba(197, 168, 128, 0.18);
-        border-radius: 12px;
-        padding: 0.85rem 1rem;
-        margin-top: 1rem;
+        border-radius: 10px;
+        padding: 0.75rem 0.9rem;
+        margin-top: 0.4rem;
+        margin-bottom: 0.85rem;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     }
     .sidebar-stat-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 6px 0;
+        padding: 5px 0;
         border-bottom: 1px solid rgba(197, 168, 128, 0.08);
+        gap: 8px;
     }
     .sidebar-stat-row:last-child {
         border-bottom: none;
     }
     .sidebar-stat-label {
-        font-size: 0.72rem;
+        font-size: 0.71rem;
         color: #8b949e;
         text-transform: uppercase;
         letter-spacing: 0.03em;
         font-family: 'Inter', sans-serif;
+        white-space: nowrap;
     }
     .sidebar-stat-val {
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         font-family: 'JetBrains Mono', monospace;
         font-weight: 600;
         color: #ffffff;
+        text-align: right;
+        white-space: nowrap;
     }
     .sidebar-stat-val-gold {
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         font-family: 'JetBrains Mono', monospace;
         font-weight: 600;
         color: #dfc18b;
+        text-align: right;
+        white-space: nowrap;
     }
 </style>
 """
 
 
-# --- Robust Data Hydration Helpers ---
+# --- Robust Data Hydration & Settings Helpers ---
 
 def sanitize_number(val: Any, default: Optional[float] = None) -> Optional[float]:
     """Ensure numeric value is finite and not NaN/Inf."""
@@ -503,6 +537,39 @@ def sanitize_number(val: Any, default: Optional[float] = None) -> Optional[float
         return f
     except (ValueError, TypeError):
         return default
+
+
+def get_selected_ai_model() -> str:
+    """Читает выбранную пользователем модель ИИ (по умолчанию gemini-3.8-flash)."""
+    try:
+        if UI_SETTINGS_FILE.exists():
+            data = json.loads(UI_SETTINGS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                m = str(data.get("gemini_model", "")).strip()
+                if m in SUPPORTED_AI_MODELS:
+                    return m
+    except Exception:
+        pass
+    env_m = os.getenv("GEMINI_MODEL", DEFAULT_AI_MODEL).strip()
+    return env_m if env_m in SUPPORTED_AI_MODELS else DEFAULT_AI_MODEL
+
+
+def save_selected_ai_model(model_id: str) -> str:
+    """Сохраняет выбранную модель ИИ в настройки и окружение."""
+    clean_id = model_id if model_id in SUPPORTED_AI_MODELS else DEFAULT_AI_MODEL
+    os.environ["GEMINI_MODEL"] = clean_id
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "gemini_model": clean_id,
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        tmp_path = UI_SETTINGS_FILE.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_path.replace(UI_SETTINGS_FILE)
+    except Exception:
+        pass
+    return clean_id
 
 
 def load_market_snapshot(file_path: Optional[Path] = None) -> Dict[str, Any]:
@@ -548,6 +615,21 @@ def load_calibration_tracker(file_path: Optional[Path] = None) -> List[Dict[str,
         return data if isinstance(data, list) else []
     except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValueError):
         return []
+
+
+def load_daemon_status(file_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Load background daemon status for sidebar telemetry."""
+    target_path = file_path or (PROJECT_ROOT / "daemon_status.json")
+    if not target_path.exists():
+        return {"status": "STOPPED"}
+    try:
+        raw_text = target_path.read_text(encoding="utf-8")
+        if not raw_text.strip():
+            return {"status": "STOPPED"}
+        data = json.loads(raw_text)
+        return data if isinstance(data, dict) else {"status": "STOPPED"}
+    except Exception:
+        return {"status": "STOPPED"}
 
 
 def load_markdown_report(file_path: Optional[Path] = None) -> Optional[str]:
@@ -603,7 +685,9 @@ def extract_spot_price(snapshot: Dict[str, Any]) -> float:
 
 def extract_quant_bias(snapshot: Dict[str, Any]) -> Tuple[int, str, Dict[str, int]]:
     """Extract Quant Bias score, label, and factor breakdown."""
-    qb = snapshot.get("quant_bias", {})
+    qb = snapshot.get("quant_bias") or snapshot.get("binance", {}).get("quant_bias", {})
+    if not isinstance(qb, dict):
+        qb = {}
     score = sanitize_number(qb.get("composite_score"), 0)
     score_int = int(max(-100, min(100, round(score))))
     label = str(qb.get("bias_label", "NEUTRAL")).upper()
@@ -615,11 +699,10 @@ def extract_quant_bias(snapshot: Dict[str, Any]) -> Tuple[int, str, Dict[str, in
 
 def extract_risk_model(snapshot: Dict[str, Any], spot_price: float) -> Dict[str, Any]:
     """Extract or reconstruct ATR risk model."""
-    risk = snapshot.get("risk_model") or snapshot.get("atr_risk")
+    risk = snapshot.get("risk_model") or snapshot.get("atr_risk") or snapshot.get("binance", {}).get("risk_model")
     if isinstance(risk, dict) and "long" in risk and "short" in risk:
         return risk
-    
-    # Mathematical fallback derived from 1.5x ATR buffer
+
     atr14 = 476.16
     buffer = 1.5 * atr14
     return {
@@ -643,20 +726,18 @@ def extract_risk_model(snapshot: Dict[str, Any], spot_price: float) -> Dict[str,
         },
         "recommended": {
             "scenario": "LONG",
+            "direction": "LONG",
             "stop_loss": round(spot_price - buffer, 2),
             "tp1_rr2": round(spot_price + 2.0 * buffer, 2),
             "tp2_rr3": round(spot_price + 3.0 * buffer, 2),
-        }
+        },
     }
 
 
-# --- Visualization Generators (Plotly Engine - Bloomberg Black & Gold) ---
+# --- Visualization Generators (Plotly Engine - Matte Luxury Black & Gold) ---
 
 def create_quant_bias_gauge(score: int, prev_score: Optional[int] = None, label: str = "NEUTRAL") -> go.Figure:
-    """
-    Sleek, minimalist Quant Bias Speedometer Gauge Chart — Luxury Matte Terminal Style.
-    Scale: -100 to +100 with smooth slender arc and non-glaring zone tinting.
-    """
+    """Sleek, minimalist Quant Bias Speedometer Gauge Chart (-100 to +100)."""
     clamped_score = max(-100, min(100, score))
     delta_dict = None
     if prev_score is not None:
@@ -673,7 +754,10 @@ def create_quant_bias_gauge(score: int, prev_score: Optional[int] = None, label:
             mode="gauge+number+delta" if delta_dict else "gauge+number",
             value=clamped_score,
             delta=delta_dict,
-            title={"text": f"<b>QUANT BIAS INDEX: <span style='color:#dfc18b'>{label}</span></b>", "font": {"size": 13, "color": "#8b949e", "family": "Inter, sans-serif"}},
+            title={
+                "text": f"<b>QUANT BIAS INDEX: <span style='color:#dfc18b'>{label}</span></b>",
+                "font": {"size": 13, "color": "#8b949e", "family": "Inter, sans-serif"},
+            },
             number={"font": {"size": 44, "color": "#ffffff", "family": "JetBrains Mono, monospace"}},
             gauge={
                 "axis": {
@@ -708,12 +792,12 @@ def create_quant_bias_gauge(score: int, prev_score: Optional[int] = None, label:
 
 
 def create_factor_breakdown_chart(breakdown: Dict[str, Any]) -> go.Figure:
-    """Horizontal bar chart showing contributions of the 6 Quant Bias factors with matte colors and no hover popups."""
+    """Horizontal bar chart showing contributions of the 6 Quant Bias factors (matches real weights)."""
     factor_labels = {
-        "1d_vwap_trend": "1D VWAP Trend (±10)",
-        "24h_spot_cvd": "24H Spot CVD (±15)",
-        "spot_orderbook_imbalance": "Spot Book Imbalance (±15)",
-        "futures_orderbook_imbalance": "Futures Book Imbalance (±10)",
+        "1d_vwap_trend": "1D VWAP Trend (±15)",
+        "24h_spot_cvd": "24H Spot CVD (±20)",
+        "spot_orderbook_imbalance": "Spot Book Imbalance (±20)",
+        "futures_orderbook_imbalance": "Futures Book Imbalance (±15)",
         "24h_divergence_engine": "24H Price/OI Divergence (±15)",
         "oi_squeeze_risk": "OI Squeeze Risk (±15)",
     }
@@ -752,12 +836,15 @@ def create_factor_breakdown_chart(breakdown: Dict[str, Any]) -> go.Figure:
     )
 
     fig.update_layout(
-        title=dict(text="<b>ФАКТОРНАЯ МАТРИЦА СКОРИНГА (FACTOR MATRIX)</b>", font=dict(size=13, color="#dfc18b", family="Inter, sans-serif")),
+        title=dict(
+            text="<b>ФАКТОРНАЯ МАТРИЦА СКОРИНГА (FACTOR MATRIX)</b>",
+            font=dict(size=13, color="#dfc18b", family="Inter, sans-serif"),
+        ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         hovermode=False,
         xaxis=dict(
-            range=[-20, 20],
+            range=[-30, 30],
             zeroline=True,
             zerolinecolor="rgba(197, 168, 128, 0.4)",
             zerolinewidth=1.5,
@@ -805,9 +892,8 @@ def create_price_atr_chart(spot_price: float, risk_model: Dict[str, Any], histor
     long_plan = risk_model.get("long", {})
     short_plan = risk_model.get("short", {})
     rec = risk_model.get("recommended", {})
-    scenario = rec.get("scenario", "LONG")
+    scenario = rec.get("scenario") or rec.get("direction", "LONG")
 
-    # Current Price Entry reference line (Champagne Gold)
     fig.add_hline(
         y=spot_price,
         line=dict(color="#dfc18b", width=1.5),
@@ -862,7 +948,10 @@ def create_price_atr_chart(spot_price: float, risk_model: Dict[str, Any], histor
         )
 
     fig.update_layout(
-        title=dict(text=f"<b>ДИНАМИКА ЦЕНЫ С РИСК-УРОВНЯМИ ATR ({scenario})</b>", font=dict(size=13, color="#dfc18b", family="Inter, sans-serif")),
+        title=dict(
+            text=f"<b>ДИНАМИКА ЦЕНЫ С РИСК-УРОВНЯМИ ATR ({scenario})</b>",
+            font=dict(size=13, color="#dfc18b", family="Inter, sans-serif"),
+        ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(gridcolor="#1e2330", tickfont=dict(color="#8b949e", family="JetBrains Mono, monospace")),
@@ -879,7 +968,7 @@ def create_cvd_barchart(snapshot: Dict[str, Any]) -> go.Figure:
     if not isinstance(snapshot, dict):
         snapshot = {}
     binance_data = snapshot.get("binance") if isinstance(snapshot.get("binance"), dict) else {}
-    cvd_data = binance_data.get("spot_taker_delta") or snapshot.get("spot_cvd", {})
+    cvd_data = binance_data.get("spot_taker_delta") or snapshot.get("spot_taker_delta") or snapshot.get("spot_cvd", {})
     if not isinstance(cvd_data, dict):
         cvd_data = {}
 
@@ -898,7 +987,6 @@ def create_cvd_barchart(snapshot: Dict[str, Any]) -> go.Figure:
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Столбец 1: Чистая дельта в BTC
     fig.add_trace(
         go.Bar(
             x=timeframes,
@@ -912,7 +1000,6 @@ def create_cvd_barchart(snapshot: Dict[str, Any]) -> go.Figure:
         secondary_y=False,
     )
 
-    # Столбец 2: Дельта в % от объема
     pct_colors = ["rgba(197, 168, 128, 0.65)" if p >= 0 else "rgba(246, 70, 93, 0.55)" for p in pct_volumes]
     fig.add_trace(
         go.Bar(
@@ -928,7 +1015,10 @@ def create_cvd_barchart(snapshot: Dict[str, Any]) -> go.Figure:
     )
 
     fig.update_layout(
-        title=dict(text="<b>СПОТОВАЯ ДЕЛЬТА ПО ТАЙМФРЕЙМАМ (CVD MULTI-TIMEFRAME)</b>", font=dict(size=13, color="#dfc18b", family="Inter, sans-serif")),
+        title=dict(
+            text="<b>СПОТОВАЯ ДЕЛЬТА ПО ТАЙМФРЕЙМАМ (CVD MULTI-TIMEFRAME)</b>",
+            font=dict(size=13, color="#dfc18b", family="Inter, sans-serif"),
+        ),
         barmode="group",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -972,7 +1062,6 @@ def create_zscore_timeseries(history: List[Dict[str, Any]]) -> go.Figure:
         oi_zscores = [sanitize_number(h.get("oi_zscore"), 0.0) for h in valid_history]
         funding_zscores = [sanitize_number(h.get("funding_zscore"), 0.0) for h in valid_history]
 
-    # OI Z-Score line (Champagne Gold)
     fig.add_trace(
         go.Scatter(
             x=timestamps,
@@ -986,7 +1075,6 @@ def create_zscore_timeseries(history: List[Dict[str, Any]]) -> go.Figure:
         col=1,
     )
 
-    # OI Thresholds ±2.0
     for threshold, color, label in [(2.0, "#f6465d", "+2.0 Squeeze Alert"), (-2.0, "#2ebd85", "-2.0 Flush Completed")]:
         fig.add_hline(
             y=threshold,
@@ -998,7 +1086,6 @@ def create_zscore_timeseries(history: List[Dict[str, Any]]) -> go.Figure:
             col=1,
         )
 
-    # Funding Z-Score line (Soft Sky Blue)
     fig.add_trace(
         go.Scatter(
             x=timestamps,
@@ -1012,7 +1099,6 @@ def create_zscore_timeseries(history: List[Dict[str, Any]]) -> go.Figure:
         col=1,
     )
 
-    # Funding Thresholds ±2.0
     for threshold, color, label in [(2.0, "#dfc18b", "+2.0 Euphoric Longs"), (-2.0, "#64b5f6", "-2.0 Deep Discount")]:
         fig.add_hline(
             y=threshold,
@@ -1040,23 +1126,30 @@ def create_zscore_timeseries(history: List[Dict[str, Any]]) -> go.Figure:
 
 # --- Subprocess Execution Engine ---
 
-def build_execution_command(fast_mode: bool = False) -> List[str]:
+def build_execution_command(fast_mode: bool = False, model_name: Optional[str] = None) -> List[str]:
     """Construct process invocation command for btc_market_intelligence.py."""
     cmd = [sys.executable, str(PROJECT_ROOT / "btc_market_intelligence.py")]
     if fast_mode:
         cmd.append("--fast")
+    if model_name and model_name in SUPPORTED_AI_MODELS:
+        cmd.extend(["--model", model_name])
     return cmd
 
 
-def run_pipeline_subprocess(fast_mode: bool = False, log_box: Optional[Any] = None) -> Tuple[int, str, float]:
+def run_pipeline_subprocess(fast_mode: bool = False, log_box: Optional[Any] = None, model_name: Optional[str] = None) -> Tuple[int, str, float]:
     """Execute pipeline via isolated subprocess with real-time log streaming."""
-    cmd = build_execution_command(fast_mode=fast_mode)
+    cmd = build_execution_command(fast_mode=fast_mode, model_name=model_name)
     start_time = time.time()
-    
+
+    env = os.environ.copy()
+    if model_name:
+        env["GEMINI_MODEL"] = model_name
+
     try:
         proc = subprocess.Popen(
             cmd,
             cwd=PROJECT_ROOT,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -1070,7 +1163,7 @@ def run_pipeline_subprocess(fast_mode: bool = False, log_box: Optional[Any] = No
             for line in iter(proc.stdout.readline, ""):
                 captured_lines.append(line)
                 if log_box is not None:
-                    recent = "".join(captured_lines[-18:])
+                    recent = "".join(captured_lines[-14:])
                     log_box.markdown(f'<div class="console-stream">{recent}</div>', unsafe_allow_html=True)
 
         proc.stdout.close()
@@ -1103,6 +1196,8 @@ def main():
         st.session_state["last_run_logs"] = ""
     if "last_run_status" not in st.session_state:
         st.session_state["last_run_status"] = None
+    if "selected_ai_model" not in st.session_state:
+        st.session_state["selected_ai_model"] = get_selected_ai_model()
 
     # Load artifacts
     snapshot = load_market_snapshot()
@@ -1114,6 +1209,7 @@ def main():
             pass
     history = load_market_history()
     tracker = load_calibration_tracker()
+    daemon_info = load_daemon_status()
     markdown_content = load_markdown_report()
     pdf_b64 = load_pdf_base64()
     screenshots_dict = get_available_screenshots()
@@ -1122,14 +1218,13 @@ def main():
     quant_score, quant_label, quant_breakdown = extract_quant_bias(snapshot)
     risk_model = extract_risk_model(snapshot, spot_price)
 
-    # Extract KPI metrics before header to populate Bloomberg Ticker Tape
     prices_dict = snapshot.get("prices") or snapshot.get("binance", {}).get("prices", {})
     spot_summary = snapshot.get("binance", {}).get("spot_24h_summary", {})
     change_24h = sanitize_number(spot_summary.get("change_pct"), 0.0)
     basis_usd = sanitize_number(prices_dict.get("synchronized_basis_usd", prices_dict.get("basis_usd")), 0.0)
     basis_pct = sanitize_number(prices_dict.get("synchronized_basis_pct", prices_dict.get("basis_pct")), 0.0)
 
-    zscores_dict = snapshot.get("statistical_z_scores", {})
+    zscores_dict = snapshot.get("statistical_z_scores") or snapshot.get("binance", {}).get("statistical_z_scores", {})
     oi_zscore = sanitize_number(zscores_dict.get("oi_zscore"), 0.0)
     funding_zscore = sanitize_number(zscores_dict.get("funding_zscore"), 0.0)
 
@@ -1137,7 +1232,6 @@ def main():
     mvrv_stage = onchain_dict.get("mvrv_stage", "Н/Д")
     nupl_stage = onchain_dict.get("nupl_stage", "Н/Д")
 
-    # Extract Institutional Metrics (Deribit DVOL, CME Futures, Coinbase Pro L2)
     dvol_dict = snapshot.get("deribit_dvol") or snapshot.get("binance", {}).get("deribit_dvol", {})
     dvol_val = sanitize_number(dvol_dict.get("current_dvol"))
     dvol_regime = dvol_dict.get("dvol_regime", "Нормальная")
@@ -1148,7 +1242,7 @@ def main():
 
     cb_dict = snapshot.get("coinbase_orderbook") or snapshot.get("binance", {}).get("coinbase_orderbook", {})
     cb_ratio = sanitize_number(cb_dict.get("bid_vs_ask_ratio"), 1.0)
-    
+
     atr_val = sanitize_number(risk_model.get("atr14"), 476.16)
     dvol_str = f"{dvol_val:.1f} pts" if dvol_val is not None else "Н/Д"
     cme_str = f"${cme_basis_usd:+,.1f}" if cme_basis_usd is not None else "Н/Д"
@@ -1156,12 +1250,14 @@ def main():
     ticker_delta_cls = "ticker-pos" if change_24h >= 0 else "ticker-neg"
     ticker_basis_cls = "ticker-pos" if basis_usd >= 0 else "ticker-neg"
 
-    # Historical delta for Quant Bias
     prev_quant_score = None
     if len(history) >= 2:
         prev_quant_score = history[-2].get("quant_bias_score")
 
-    # 1. Bloomberg Live Ticker Tape Strip
+    snap_time = snapshot.get("timestamp_utc", "Н/Д")
+    market_regime_str = snapshot.get("quant_bias", {}).get("market_regime", "BALANCED_NORMAL")
+
+    # 1. Bloomberg Live Ticker Tape Strip (Pure Market Quotes)
     st.markdown(
         f"""
         <div class="bloomberg-ticker-tape">
@@ -1176,21 +1272,21 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # 2. Executive Bloomberg Terminal Header
+    # 2. Clean Executive Terminal Header (All technical feed/module details moved to Sidebar)
     st.markdown(
-        """
+        f"""
         <div class="terminal-header">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                 <div>
                     <div class="terminal-title">BTC MARKET INTELLIGENCE TERMINAL</div>
-                    <div class="terminal-subtitle">Институциональная торговая аналитика и количественный риск-менеджмент</div>
+                    <div class="terminal-subtitle">Утренний количественный обзор рынка, структура потоков и риск-модель ATR</div>
                 </div>
                 <div style="text-align: right;">
                     <div class="bloomberg-status-badge">
                         <span class="live-dot"></span>
-                        <span>ПОДКЛЮЧЕНО К БИРЖАМ</span>
+                        <span>РЕЖИМ: {market_regime_str}</span>
                     </div>
-                    <div style="font-size: 0.72rem; color: #8b949e; font-family: 'JetBrains Mono', monospace; margin-top: 5px;">Потоки: Binance Spot & Futures | Deribit | CME</div>
+                    <div style="font-size: 0.72rem; color: #8b949e; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">Срез: {snap_time}</div>
                 </div>
             </div>
         </div>
@@ -1199,7 +1295,6 @@ def main():
     )
 
     # Render Top KPI Ribbon (Responsive 4 + 4 Grid)
-    # Row 1: Core Price Action & Quant Bias
     r1_cols = st.columns(4)
 
     with r1_cols[0]:
@@ -1220,7 +1315,7 @@ def main():
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-title">Базис фьючерсов (Binance)</div>
+                <div class="kpi-title">Базис фьючерсов</div>
                 <div class="kpi-value">${basis_usd:+,.2f}</div>
                 <div class="kpi-sub {basis_class}">{basis_pct:+.3f}% спред к споту</div>
             </div>
@@ -1256,7 +1351,6 @@ def main():
 
     st.write("")
 
-    # Row 2: Derivatives, On-Chain Cycle & Institutional Telemetry
     r2_cols = st.columns(4)
 
     with r2_cols[0]:
@@ -1313,7 +1407,9 @@ def main():
 
     st.write("")
 
-    # Sidebar: Terminal Controls & Trader Information
+    # =========================================================================
+    # SIDEBAR: Управление, Статус ИИ + Выбор модели, Сводка трейдера, Статусы бирж и модулей
+    # =========================================================================
     with st.sidebar:
         st.markdown(
             """
@@ -1325,26 +1421,101 @@ def main():
             unsafe_allow_html=True,
         )
 
-        # Institutional Execution Buttons (Clean, Zero Emojis)
-        run_fast = st.button("Обновить котировки", use_container_width=True, disabled=st.session_state["is_running"], help="Опрос биржевых шлюзов и моментальный перерасчет скоринга")
-        run_full = st.button("Сформировать PDF-отчет", use_container_width=True, disabled=st.session_state["is_running"], help="Сбор глубокой аналитики, ончейн-метрик и верстка PDF-документа")
+        run_fast = st.button(
+            "Обновить котировки",
+            use_container_width=True,
+            disabled=st.session_state["is_running"],
+            help="Быстрый опрос биржевых шлюзов и перерасчет Quant Bias (2-4 сек)",
+        )
+        run_full = st.button(
+            "Сформировать PDF-отчет",
+            use_container_width=True,
+            disabled=st.session_state["is_running"],
+            help="Сбор глубокой аналитики, синтез через выбранную модель Gemini и верстка PDF",
+        )
+
+        pdf_path = PROJECT_ROOT / "daily_report.pdf"
+        has_pdf = pdf_path.exists()
+        if has_pdf:
+            st.download_button(
+                label="Скачать PDF-отчет",
+                data=pdf_path.read_bytes(),
+                file_name="daily_report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+        # --- БЛОК ИИ: Статус подключения и выбор модели (Gemini 3.8 Flash / Gemini 3.7 Flash) ---
+        has_api_key = bool(os.getenv("GEMINI_API_KEY", "").strip())
+        ai_pill_cls = "sidebar-section-pill" if has_api_key else "sidebar-section-pill-amber"
+        ai_pill_txt = "CONNECTED" if has_api_key else "AUTONOMOUS"
+
+        st.markdown(
+            f"""
+            <div class="sidebar-section-header" style="margin-top: 1.1rem;">
+                <span class="sidebar-section-title">Аналитическое ядро ИИ</span>
+                <span class="{ai_pill_cls}">{ai_pill_txt}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        model_keys = list(SUPPORTED_AI_MODELS.keys())
+        current_model_idx = model_keys.index(st.session_state["selected_ai_model"]) if st.session_state["selected_ai_model"] in model_keys else 0
+        chosen_model = st.selectbox(
+            "Модель синтеза отчета:",
+            options=model_keys,
+            index=current_model_idx,
+            format_func=lambda k: SUPPORTED_AI_MODELS.get(k, k),
+        )
+        if chosen_model != st.session_state["selected_ai_model"]:
+            st.session_state["selected_ai_model"] = save_selected_ai_model(chosen_model)
+        else:
+            save_selected_ai_model(chosen_model)
+
+        ai_conn_dot = '<span class="live-dot"></span> ПОДКЛЮЧЕНО (API OK)' if has_api_key else '<span class="dot-amber"></span> QUANT-РАСЧЕТ (БЕЗ КЛЮЧА)'
+        ai_conn_color = "#2ebd85" if has_api_key else "#dfc18b"
+
+        st.markdown(
+            f"""
+            <div class="sidebar-status-card">
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Статус ИИ</span>
+                    <span class="sidebar-stat-val" style="color: {ai_conn_color};">{ai_conn_dot}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Активная модель</span>
+                    <span class="sidebar-stat-val-gold">{chosen_model}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Резервная модель</span>
+                    <span class="sidebar-stat-val">{"gemini-3.7-flash" if chosen_model == "gemini-3.8-flash" else "gemini-3.8-flash"}</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         # Execution Logic (Live Data Fetch & PDF Compilation)
         if run_fast or run_full:
             is_fast = bool(run_fast)
-            mode_label = "Обновление котировок" if is_fast else "Формирование PDF-отчета"
+            active_model = st.session_state["selected_ai_model"]
+            mode_label = "Обновление котировок" if is_fast else f"Формирование отчета ({active_model})"
             st.session_state["is_running"] = True
-            
+
             with st.status(f"Выполняется: {mode_label}...", expanded=True) as status_box:
                 log_container = st.empty()
                 if is_fast:
-                    status_box.write("Подключение к биржевым шлюзам (Binance, Deribit, Bybit)...")
+                    status_box.write("Опрос биржевых шлюзов и перерасчет скоринга...")
                 else:
-                    status_box.write("Сбор аналитики, расчет риск-модели и верстка отчета...")
+                    status_box.write(f"Сбор аналитики и синтез через {active_model}...")
 
-                code, logs, dur = run_pipeline_subprocess(fast_mode=is_fast, log_box=log_container)
-                
-                # Cloud / Subprocess fallback: if subprocess fails, execute directly in-process
+                code, logs, dur = run_pipeline_subprocess(
+                    fast_mode=is_fast,
+                    log_box=log_container,
+                    model_name=active_model,
+                )
+
                 if code != 0:
                     if is_fast:
                         try:
@@ -1357,6 +1528,7 @@ def main():
                     else:
                         try:
                             import btc_market_intelligence as bmi
+                            bmi.set_configured_gemini_model(active_model)
                             code = bmi.main()
                             dur = 8.5
                         except Exception as fb_exc:
@@ -1364,9 +1536,9 @@ def main():
 
                 st.session_state["last_run_logs"] = logs
                 st.session_state["last_run_status"] = code
-                
+
                 if code == 0:
-                    success_msg = f"Котировки обновлены за {dur:.1f} с" if is_fast else f"PDF-отчет успешно сформирован за {dur:.1f} с"
+                    success_msg = f"Котировки обновлены за {dur:.1f} с" if is_fast else f"PDF-отчет сформирован за {dur:.1f} с"
                     status_box.update(label=f"[OK] {success_msg}", state="complete", expanded=False)
                     st.toast(success_msg)
                 else:
@@ -1377,27 +1549,25 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
+        # --- БЛОК СВОДКИ ТРЕЙДЕРА ---
         st.markdown(
             """
-            <div class="sidebar-section-header" style="margin-top: 1.25rem;">
+            <div class="sidebar-section-header" style="margin-top: 0.9rem;">
                 <span class="sidebar-section-title">Сводка трейдера</span>
                 <span class="sidebar-section-pill">STATUS</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        snap_time = snapshot.get("timestamp_utc", "Н/Д")
-        pdf_path = PROJECT_ROOT / "daily_report.pdf"
-        has_pdf = pdf_path.exists()
         badge_cls = "badge-bullish" if quant_score >= 15 else ("badge-bearish" if quant_score <= -15 else "badge-neutral")
-        pdf_label_color = '#2ebd85' if has_pdf else '#8b949e'
-        pdf_label_text = 'Готов' if has_pdf else 'Не сформирован'
+        pdf_label_color = "#2ebd85" if has_pdf else "#8b949e"
+        pdf_label_text = "Готов" if has_pdf else "Не сформирован"
 
         st.markdown(
             f"""
             <div class="sidebar-status-card">
                 <div class="sidebar-stat-row">
-                    <span class="sidebar-stat-label">Режим рынка</span>
+                    <span class="sidebar-stat-label">Сигнал</span>
                     <span class="{badge_cls}">{quant_label}</span>
                 </div>
                 <div class="sidebar-stat-row">
@@ -1409,7 +1579,7 @@ def main():
                     <span class="sidebar-stat-val">{snap_time}</span>
                 </div>
                 <div class="sidebar-stat-row">
-                    <span class="sidebar-stat-label">PDF-отчет</span>
+                    <span class="sidebar-stat-label">PDF-документ</span>
                     <span class="sidebar-stat-val" style="color: {pdf_label_color};">{pdf_label_text}</span>
                 </div>
             </div>
@@ -1417,17 +1587,79 @@ def main():
             unsafe_allow_html=True,
         )
 
-        if has_pdf:
-            st.write("")
-            st.download_button(
-                label="Скачать PDF-отчет",
-                data=pdf_path.read_bytes(),
-                file_name="daily_report.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
+        # --- БЛОК ТЕЛЕМЕТРИИ БИРЖ И ПОДКЛЮЧЕННЫХ МОДУЛЕЙ (УБРАН С ГЛАВНОГО ЭКРАНА В САЙДБАР) ---
+        st.markdown(
+            """
+            <div class="sidebar-section-header" style="margin-top: 0.9rem;">
+                <span class="sidebar-section-title">Шлюзы бирж и модули</span>
+                <span class="sidebar-section-pill">SYSTEM</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    # Main Navigation Tabs (Clean Capsule, Zero Emojis)
+        binance_ok = bool(snapshot.get("binance", {}).get("prices", {}).get("spot_last") or snapshot.get("spot_price"))
+        futures_ok = bool(snapshot.get("binance", {}).get("prices", {}).get("futures_last"))
+        bybit_ok = snapshot.get("bybit", {}).get("status") == "OK" or bool(snapshot.get("bybit", {}).get("ticker", {}).get("lastPrice"))
+        cb_ok = cb_dict.get("status") == "OK"
+        dvol_ok = dvol_dict.get("status") == "OK"
+        cme_ok = cme_dict.get("status") == "OK"
+        onchain_ok = onchain_dict.get("status") == "OK"
+        daemon_state = str(daemon_info.get("status", "STOPPED")).upper()
+        daemon_ok = daemon_state in ("RUNNING", "STARTING", "ACTIVE")
+
+        def _status_span(ok: bool, ok_text: str = "ONLINE", fallback_text: str = "STANDBY") -> str:
+            if ok:
+                return f'<span style="color:#2ebd85;"><span class="live-dot"></span> {ok_text}</span>'
+            return f'<span style="color:#dfc18b;"><span class="dot-amber"></span> {fallback_text}</span>'
+
+        st.markdown(
+            f"""
+            <div class="sidebar-status-card">
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Binance Spot</span>
+                    <span class="sidebar-stat-val">{_status_span(binance_ok)}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Futures / Bybit V5</span>
+                    <span class="sidebar-stat-val">{_status_span(futures_ok or bybit_ok)}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Coinbase Pro L2</span>
+                    <span class="sidebar-stat-val">{_status_span(cb_ok)}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Deribit DVOL</span>
+                    <span class="sidebar-stat-val">{_status_span(dvol_ok)}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">CME Futures (BTC=F)</span>
+                    <span class="sidebar-stat-val">{_status_span(cme_ok)}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">BGeometrics On-Chain</span>
+                    <span class="sidebar-stat-val">{_status_span(onchain_ok, "OK (КЭШ 12Ч)")}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Модуль Quant & ATR</span>
+                    <span class="sidebar-stat-val">{_status_span(True, "АКТИВЕН")}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Калибратор сделок</span>
+                    <span class="sidebar-stat-val">{_status_span(True, f"{len(tracker)} СИГН.")}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Фоновый демон</span>
+                    <span class="sidebar-stat-val">{_status_span(daemon_ok, "РАБОТАЕТ", "ОСТАНОВЛЕН")}</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # =========================================================================
+    # MAIN NAVIGATION TABS (Clean Capsule, Zero Emojis)
+    # =========================================================================
     tab_cockpit, tab_charts, tab_risk, tab_reports, tab_tracker = st.tabs([
         "Кокпит и Quant Bias",
         "Графики и Дельта CVD",
@@ -1444,39 +1676,55 @@ def main():
             st.markdown('<div class="content-panel">', unsafe_allow_html=True)
             gauge_fig = create_quant_bias_gauge(score=quant_score, prev_score=prev_quant_score, label=quant_label)
             st.plotly_chart(gauge_fig, use_container_width=True)
-            
+
             st.markdown(
                 f"""
                 **Показания спидометра**: Итоговый индекс Quant Bias составляет **{quant_score:+d} / 100** (зона **{quant_label}**). 
-                Значения от **-15 до +15** отражают диапазонный флэт и баланс сил. Выше **+15** — доминирование покупателей, 
-                выше **+40** — сильный институциональный тренд.
+                Значения от **-15 до +15** отражают диапазонный баланс сил. Выше **+15** — статистический перевес покупателей, 
+                выше **+40** — сильный направленный импульс.
                 """
             )
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
         with col_breakdown:
             st.markdown('<div class="content-panel">', unsafe_allow_html=True)
             breakdown_fig = create_factor_breakdown_chart(quant_breakdown)
             st.plotly_chart(breakdown_fig, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown('<div class="content-panel">', unsafe_allow_html=True)
-        st.markdown("#### Глубина биржевого стакана Binance Spot (±1.0%)")
-        
-        binance_ob = snapshot.get("binance", {}).get("orderbook_depth_summary", {})
-        b_spot_bids = sanitize_number(binance_ob.get("bids_btc"), 0.0)
-        b_spot_asks = sanitize_number(binance_ob.get("asks_btc"), 0.0)
-        b_ratio = sanitize_number(binance_ob.get("bid_ask_ratio"), 1.0)
-        
+        st.markdown("#### Глубина биржевого стакана Spot (±1.0% от цены)")
+
+        # Исправлено чтение стакана: поддержка и orderbook_depth.spot, и orderbook_depth_summary, и Coinbase L2
+        binance_ob_spot = snapshot.get("binance", {}).get("orderbook_depth", {}).get("spot") or {}
+        binance_ob_sum = snapshot.get("binance", {}).get("orderbook_depth_summary") or {}
+
+        b_spot_bids = sanitize_number(
+            binance_ob_spot.get("bid_depth_base_qty"),
+            sanitize_number(binance_ob_sum.get("bids_btc"), sanitize_number(cb_dict.get("bid_depth_btc"), 0.0)),
+        )
+        b_spot_asks = sanitize_number(
+            binance_ob_spot.get("ask_depth_base_qty"),
+            sanitize_number(binance_ob_sum.get("asks_btc"), sanitize_number(cb_dict.get("ask_depth_btc"), 0.0)),
+        )
+        b_ratio = sanitize_number(
+            binance_ob_spot.get("bid_vs_ask_ratio"),
+            sanitize_number(binance_ob_sum.get("bid_ask_ratio"), cb_ratio),
+        )
+
         ob_col1, ob_col2, ob_col3 = st.columns(3)
         with ob_col1:
-            st.metric("Биды спота (±1%)", f"{b_spot_bids:,.1f} BTC")
+            st.metric("Лимитные биды (±1%)", f"{b_spot_bids:,.1f} BTC")
         with ob_col2:
-            st.metric("Аски спота (±1%)", f"{b_spot_asks:,.1f} BTC")
+            st.metric("Лимитные аски (±1%)", f"{b_spot_asks:,.1f} BTC")
         with ob_col3:
-            st.metric("Соотношение Bid/Ask", f"{b_ratio:.2f}x", delta="Покупатели" if b_ratio > 1.2 else ("Продавцы" if b_ratio < 0.8 else "Баланс"))
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.metric(
+                "Соотношение Bid/Ask",
+                f"{b_ratio:.2f}x",
+                delta="Покупатели" if b_ratio > 1.2 else ("Продавцы" if b_ratio < 0.8 else "Баланс"),
+            )
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # TAB 2: Interactive Technical & Orderflow Charts
     with tab_charts:
@@ -1486,29 +1734,34 @@ def main():
             st.markdown('<div class="content-panel">', unsafe_allow_html=True)
             cvd_fig = create_cvd_barchart(snapshot)
             st.plotly_chart(cvd_fig, use_container_width=True)
-            
-            cvd_readout = snapshot.get("binance", {}).get("spot_taker_delta", {}).get("descriptive_read", "Рыночная дельта покупателей и продавцов.")
+
+            cvd_readout = (
+                snapshot.get("binance", {})
+                .get("spot_taker_delta", {})
+                .get("descriptive_read", "Рыночная дельта покупателей и продавцов.")
+            )
             st.caption(f"Интерпретация: {cvd_readout}")
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
         with col_c2:
             st.markdown('<div class="content-panel">', unsafe_allow_html=True)
             zscore_fig = create_zscore_timeseries(history)
             st.plotly_chart(zscore_fig, use_container_width=True)
             st.caption("Коридор ±2.0 σ обозначает зоны статистических аномалий (перегрев открытого интереса или ставки фандинга).")
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     # TAB 3: ATR Dynamic Risk & Trade Plans
     with tab_risk:
         rec_plan = risk_model.get("recommended", {})
-        rec_direction = rec_plan.get("scenario", "LONG")
-        
+        rec_direction = rec_plan.get("scenario") or rec_plan.get("direction", "LONG")
+        friction = risk_model.get("friction_analysis", {})
+
         st.markdown('<div class="content-panel">', unsafe_allow_html=True)
         st.markdown("### Динамическая риск-модель на базе ATR")
         st.markdown(
             """
             Модель динамического риска вычисляет адаптивный стоп-лосс на основе **1.5x 4H ATR**, 
-            обеспечивая математическую защиту депозита и асимметричное соотношение прибыли к риску **1:2 (TP1)** и **1:3 (TP2)**.
+            обеспечивая защиту депозита и математическое соотношение прибыли к риску **1:2 (TP1)** и **1:3 (TP2)**.
             """
         )
 
@@ -1520,43 +1773,47 @@ def main():
         with r_col2:
             st.metric("Стоп-лосс (1.5x ATR)", f"${rec_plan.get('stop_loss', 0):,.2f}")
         with r_col3:
-            st.metric("Тейк-профит 1 (1:2 R:R)", f"${rec_plan.get('tp1_rr2', 0):,.2f}")
+            st.metric("Тейк-профит 1 (1:2 R:R)", f"${rec_plan.get('tp1_rr2', rec_plan.get('tp1', 0)):,.2f}")
         with r_col4:
-            st.metric("Тейк-профит 2 (1:3 R:R)", f"${rec_plan.get('tp2_rr3', 0):,.2f}")
+            st.metric("Тейк-профит 2 (1:3 R:R)", f"${rec_plan.get('tp2_rr3', rec_plan.get('tp2', 0)):,.2f}")
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown('<div class="content-panel">', unsafe_allow_html=True)
         price_atr_fig = create_price_atr_chart(spot_price, risk_model, history)
         st.plotly_chart(price_atr_fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         col_calc, col_scenarios = st.columns([1, 1])
-        
+
         with col_calc:
             st.markdown('<div class="content-panel">', unsafe_allow_html=True)
             st.markdown("#### Калькулятор размера позиции")
             account_equity = st.number_input("Баланс депозита (USDT)", min_value=100.0, max_value=10000000.0, value=10000.0, step=500.0)
             risk_percentage = st.slider("Максимальный риск на сделку (%)", min_value=0.25, max_value=5.0, value=1.0, step=0.25)
-            
+
             max_risk_dollars = account_equity * (risk_percentage / 100.0)
             dollar_sl_distance = abs(spot_price - rec_plan.get("stop_loss", spot_price * 0.99))
-            
+
             if dollar_sl_distance > 0:
                 pos_size_btc = max_risk_dollars / dollar_sl_distance
                 pos_size_usdt = pos_size_btc * spot_price
                 st.write(f"• Допустимый риск: **${max_risk_dollars:,.2f}**")
                 st.write(f"• Дистанция до стоп-лосса: **${dollar_sl_distance:,.2f}** ({dollar_sl_distance/spot_price*100:.2f}%)")
                 st.write(f"• Рекомендуемый объем позиции: **{pos_size_btc:.4f} BTC** (~${pos_size_usdt:,.2f})")
-            st.markdown('</div>', unsafe_allow_html=True)
+                if friction.get("effective_rr_tp1"):
+                    st.write(
+                        f"• Чистый R:R (после комиссий и спреда): **1:{friction.get('effective_rr_tp1', 0):.2f}** (TP1) / **1:{friction.get('effective_rr_tp2', 0):.2f}** (TP2)"
+                    )
+            st.markdown("</div>", unsafe_allow_html=True)
 
         with col_scenarios:
             st.markdown('<div class="content-panel">', unsafe_allow_html=True)
             st.markdown("#### Сравнение сценариев Long и Short")
-            
+
             l = risk_model.get("long", {})
             s = risk_model.get("short", {})
-            
+
             sc_df = pd.DataFrame([
                 {"Параметр": "Уровень стоп-лосса", "Сценарий LONG": f"${l.get('stop_loss', 0):,.2f}", "Сценарий SHORT": f"${s.get('stop_loss', 0):,.2f}"},
                 {"Параметр": "TP1 (1:2 R:R)", "Сценарий LONG": f"${l.get('tp1_rr2', 0):,.2f}", "Сценарий SHORT": f"${s.get('tp1_rr2', 0):,.2f}"},
@@ -1565,7 +1822,7 @@ def main():
                 {"Параметр": "Риск в процентах", "Сценарий LONG": f"{l.get('risk_pct', 0):.2f}%", "Сценарий SHORT": f"{s.get('risk_pct', 0):.2f}%"},
             ])
             st.dataframe(sc_df, hide_index=True, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     # TAB 4: Document Viewers & Screenshots
     with tab_reports:
@@ -1592,8 +1849,8 @@ def main():
                 )
                 st.markdown(pdf_display, unsafe_allow_html=True)
             else:
-                st.info("Отчет daily_report.pdf еще не сформирован. Нажмите «Полный отчет с PDF» в боковой панели.")
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.info("Отчет daily_report.pdf еще не сформирован. Нажмите «Сформировать PDF-отчет» в боковой панели.")
+            st.markdown("</div>", unsafe_allow_html=True)
 
         with doc_tab2:
             st.markdown('<div class="content-panel">', unsafe_allow_html=True)
@@ -1606,8 +1863,8 @@ def main():
                 )
                 st.markdown(markdown_content)
             else:
-                st.info("Файл daily_report.md не найден. Запустите анализ.")
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.info("Файл daily_report.md не найден. Запустите формирование отчета.")
+            st.markdown("</div>", unsafe_allow_html=True)
 
         with doc_tab3:
             st.markdown('<div class="content-panel">', unsafe_allow_html=True)
@@ -1618,7 +1875,7 @@ def main():
                     st.image(str(img_path), caption=selected_chart, use_container_width=True)
             else:
                 st.info("Скриншоты еще не созданы. Они формируются при полном запуске анализа.")
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     # TAB 5: Winrate Calibration & History
     with tab_tracker:
@@ -1627,7 +1884,7 @@ def main():
         st.markdown(
             """
             Модуль калибровки непрерывно регистрирует сигналы (LONG / SHORT) и отслеживает исходы 
-            в 24-часовом окне с проверкой достижения стоп-лосса и расчетных тейк-профитов.
+            по закрытым свечам после точки входа с проверкой достижения стоп-лосса и тейк-профитов.
             """
         )
 
@@ -1640,7 +1897,7 @@ def main():
         resolved_count = len(resolved_signals)
         win_count = len(wins)
         loss_count = len(losses)
-        
+
         if resolved_count > 0:
             winrate_pct = (win_count / resolved_count) * 100.0
             winrate_display = f"{winrate_pct:.1f}%"
@@ -1663,11 +1920,15 @@ def main():
             table_rows = []
             for t in reversed(tracker):
                 outcome = t.get("outcome") or ("WIN" if t.get("is_win") is True else ("LOSS" if t.get("is_win") is False else "PENDING"))
-                
+
                 pnl = t.get("pnl_pct")
                 pnl_str = f"{pnl:+.2f}%" if pnl is not None else "—"
 
-                status_label = "УСПЕХ" if outcome == "WIN" else ("СТОП" if outcome == "LOSS" else ("ПРОБОЙ" if outcome == "TREND_BREAKOUT" else "В ОЖИДАНИИ"))
+                status_label = (
+                    "УСПЕХ"
+                    if outcome == "WIN"
+                    else ("СТОП" if outcome == "LOSS" else ("ПРОБОЙ" if outcome == "TREND_BREAKOUT" else "В ОЖИДАНИИ"))
+                )
 
                 table_rows.append({
                     "Время (UTC)": t.get("timestamp_utc", t.get("id", "Н/Д")),
@@ -1683,7 +1944,7 @@ def main():
                 })
 
             tracker_df = pd.DataFrame(table_rows)
-            
+
             status_filter = st.radio("Фильтр сигналов:", ["Все", "В ожидании", "Успех", "Стоп"], horizontal=True)
             if status_filter == "В ожидании":
                 tracker_df = tracker_df[tracker_df["Статус"] == "В ОЖИДАНИИ"]
@@ -1696,7 +1957,7 @@ def main():
         else:
             st.info("История сигналов пуста. Новые сигналы записываются при каждом срезе.")
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

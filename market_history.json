@@ -5908,5 +5908,61 @@
     "oi_zscore": -2.2,
     "funding_zscore": -0.97,
     "divergence_state": "Neutral / Ranging"
+  },
+  {
+    "epoch": 1791964181.9945734,
+    "timestamp_utc": "2026-10-14T07:49:41+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83486.01,
+    "futures_price": 83465.0,
+    "open_interest_btc": 91701.803,
+    "funding_pct": 0.0007,
+    "quant_bias_score": -51,
+    "quant_bias_label": "STRONG BEARISH",
+    "oi_zscore": -2.362,
+    "funding_zscore": -0.501,
+    "divergence_state": "Bullish Reversal Weakness (Long Liquidation)"
+  },
+  {
+    "epoch": 1791964218.2793353,
+    "timestamp_utc": "2026-10-14T07:50:18+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83500.0,
+    "futures_price": 83469.7,
+    "open_interest_btc": 91697.528,
+    "funding_pct": 0.0008,
+    "quant_bias_score": -11,
+    "quant_bias_label": "NEUTRAL",
+    "oi_zscore": -2.368,
+    "funding_zscore": -0.466,
+    "divergence_state": "Bullish Reversal Weakness (Long Liquidation)"
+  },
+  {
+    "epoch": 1791964922.1166449,
+    "timestamp_utc": "2026-10-14T08:02:02+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83684.0,
+    "futures_price": 83648.4,
+    "open_interest_btc": 91611.685,
+    "funding_pct": 0.0016,
+    "quant_bias_score": 17,
+    "quant_bias_label": "BULLISH",
+    "oi_zscore": -2.294,
+    "funding_zscore": -0.26,
+    "divergence_state": "Bullish Reversal Weakness (Long Liquidation)"
+  },
+  {
+    "epoch": 1791964943.8036118,
+    "timestamp_utc": "2026-10-14T08:02:23+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 83698.0,
+    "futures_price": 83655.6,
+    "open_interest_btc": 91604.523,
+    "funding_pct": 0.0016,
+    "quant_bias_score": -5,
+    "quant_bias_label": "NEUTRAL",
+    "oi_zscore": -2.302,
+    "funding_zscore": -0.26,
+    "divergence_state": "Bullish Reversal Weakness (Long Liquidation)"
   }
 ]
