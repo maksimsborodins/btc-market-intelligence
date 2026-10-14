@@ -336,6 +336,90 @@ CUSTOM_CSS = """
         border-color: #dfc18b !important;
     }
 
+    /* Sidebar Section Headers */
+    .sidebar-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 0.25rem;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.45rem;
+        border-bottom: 1px solid rgba(197, 168, 128, 0.18);
+    }
+    .sidebar-section-title {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #dfc18b;
+    }
+    .sidebar-section-pill {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.65rem;
+        font-weight: 600;
+        color: #2ebd85;
+        background: rgba(46, 189, 133, 0.12);
+        border: 1px solid rgba(46, 189, 133, 0.3);
+        padding: 2px 7px;
+        border-radius: 4px;
+        letter-spacing: 0.03em;
+    }
+
+    /* Sidebar Action Buttons - Bloomberg / Linear Terminal Style */
+    section[data-testid="stSidebar"] div.stButton > button {
+        background: #151922 !important;
+        color: #dfc18b !important;
+        border: 1px solid rgba(223, 193, 139, 0.38) !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.84rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.02em !important;
+        min-height: 42px !important;
+        height: 42px !important;
+        border-radius: 8px !important;
+        padding: 0 1rem !important;
+        margin-bottom: 0.25rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+        transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    section[data-testid="stSidebar"] div.stButton > button:hover {
+        background: #dfc18b !important;
+        color: #0b0e14 !important;
+        border-color: #f0d5a0 !important;
+        box-shadow: 0 2px 8px rgba(223, 193, 139, 0.25) !important;
+    }
+    section[data-testid="stSidebar"] div.stButton > button:active {
+        transform: translateY(1px) !important;
+    }
+
+    /* Sidebar Download Button */
+    section[data-testid="stSidebar"] div.stDownloadButton > button {
+        background: rgba(46, 189, 133, 0.1) !important;
+        color: #2ebd85 !important;
+        border: 1px solid rgba(46, 189, 133, 0.35) !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.84rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.02em !important;
+        min-height: 40px !important;
+        height: 40px !important;
+        border-radius: 8px !important;
+        padding: 0 1rem !important;
+        box-sizing: border-box !important;
+        transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    section[data-testid="stSidebar"] div.stDownloadButton > button:hover {
+        background: #2ebd85 !important;
+        color: #0b0e14 !important;
+        border-color: #2ebd85 !important;
+        box-shadow: 0 2px 8px rgba(46, 189, 133, 0.25) !important;
+    }
+
     /* Metrics Styling */
     [data-testid="stMetric"] {
         background: #161a24 !important;
@@ -1231,25 +1315,32 @@ def main():
 
     # Sidebar: Terminal Controls & Trader Information
     with st.sidebar:
-        st.markdown("### Данные рынка")
-        st.caption("Сбор котировок, стаканов и деривативов с бирж")
+        st.markdown(
+            """
+            <div class="sidebar-section-header">
+                <span class="sidebar-section-title">Терминал данных</span>
+                <span class="sidebar-section-pill">LIVE</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        # Clean Execution Buttons (2 clear actions: Fast Refresh & PDF Report)
-        run_fast = st.button("🔄 Обновить данные рынка (3 сек)", use_container_width=True, disabled=st.session_state["is_running"], help="Мгновенный опрос Binance, Deribit, Bybit и расчет скоринга")
-        run_full = st.button("📄 Сгенерировать PDF-отчет (~15 сек)", use_container_width=True, disabled=st.session_state["is_running"], help="Сбор глубокой аналитики, ончейн-метрик и формирование PDF-документа")
+        # Institutional Execution Buttons (Clean, Zero Emojis)
+        run_fast = st.button("Обновить котировки", use_container_width=True, disabled=st.session_state["is_running"], help="Опрос биржевых шлюзов и моментальный перерасчет скоринга")
+        run_full = st.button("Сформировать PDF-отчет", use_container_width=True, disabled=st.session_state["is_running"], help="Сбор глубокой аналитики, ончейн-метрик и верстка PDF-документа")
 
         # Execution Logic (Live Data Fetch & PDF Compilation)
         if run_fast or run_full:
             is_fast = bool(run_fast)
-            mode_label = "Обновление данных рынка" if is_fast else "Формирование PDF-отчета"
+            mode_label = "Обновление котировок" if is_fast else "Формирование PDF-отчета"
             st.session_state["is_running"] = True
             
-            with st.status(f"Выполняется {mode_label}...", expanded=True) as status_box:
+            with st.status(f"Выполняется: {mode_label}...", expanded=True) as status_box:
                 log_container = st.empty()
                 if is_fast:
-                    status_box.write("⚡ Подключение к REST API бирж (Binance, Deribit, Bybit)...")
+                    status_box.write("Подключение к биржевым шлюзам (Binance, Deribit, Bybit)...")
                 else:
-                    status_box.write("📄 Опрос бирж, расчет риск-модели и верстка журнального PDF-отчета...")
+                    status_box.write("Сбор аналитики, расчет риск-модели и верстка отчета...")
 
                 code, logs, dur = run_pipeline_subprocess(fast_mode=is_fast, log_box=log_container)
                 
@@ -1275,19 +1366,26 @@ def main():
                 st.session_state["last_run_status"] = code
                 
                 if code == 0:
-                    success_msg = f"Данные рынка обновлены за {dur:.1f} с" if is_fast else f"PDF-отчет успешно сформирован за {dur:.1f} с"
-                    status_box.update(label=f"✓ {success_msg}", state="complete", expanded=False)
+                    success_msg = f"Котировки обновлены за {dur:.1f} с" if is_fast else f"PDF-отчет успешно сформирован за {dur:.1f} с"
+                    status_box.update(label=f"[OK] {success_msg}", state="complete", expanded=False)
                     st.toast(success_msg)
                 else:
-                    status_box.update(label=f"Ошибка выполнения (код {code})", state="error", expanded=True)
+                    status_box.update(label=f"[ОШИБКА] Код завершения {code}", state="error", expanded=True)
                     st.error("Ошибка при сборе данных. Проверьте соединение.")
 
             st.session_state["is_running"] = False
             st.cache_data.clear()
             st.rerun()
 
-        st.markdown("---")
-        st.markdown("### Сводка для трейдера")
+        st.markdown(
+            """
+            <div class="sidebar-section-header" style="margin-top: 1.25rem;">
+                <span class="sidebar-section-title">Сводка трейдера</span>
+                <span class="sidebar-section-pill">STATUS</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         snap_time = snapshot.get("timestamp_utc", "Н/Д")
         pdf_path = PROJECT_ROOT / "daily_report.pdf"
         has_pdf = pdf_path.exists()

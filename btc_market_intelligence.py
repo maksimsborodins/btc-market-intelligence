@@ -193,10 +193,19 @@ def finite_float(value: Any, default: Optional[float] = None) -> Optional[float]
 
 def safe_get_json(url: str, params: Optional[dict] = None) -> Any:
     try:
-        response = SESSION.get(url, params=params, timeout=(1.5, min(TIMEOUT_SEC, 2.5)))
+        response = SESSION.get(url, params=params, timeout=(0.8, min(TIMEOUT_SEC, 1.8)))
         response.raise_for_status()
         return response.json()
     except Exception as exc:
+        is_451 = hasattr(exc, "response") and exc.response is not None and getattr(exc.response, "status_code", None) == 451
+        if is_451 and "api.binance.com" in url:
+            alt_url = url.replace("https://api.binance.com", "https://data-api.binance.vision")
+            try:
+                alt_resp = SESSION.get(alt_url, params=params, timeout=(0.8, min(TIMEOUT_SEC, 1.8)))
+                alt_resp.raise_for_status()
+                return alt_resp.json()
+            except Exception:
+                pass
         print(f"[WARN] Сбой запроса JSON: {url} — {exc}")
         return None
 
@@ -1056,7 +1065,8 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
         }
         calibration_summary = {"status": "MOCK", "readout": "Offline Self-Test Calibration Summary"}
     else:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+        try:
             f_binance = pool.submit(fetch_binance_telemetry, True)
             f_bybit = pool.submit(fetch_bybit_telemetry, True)
             f_onchain = pool.submit(fetch_onchain_metrics)
@@ -1070,6 +1080,8 @@ def run_fast_momentum_scan(quiet: bool = False, mock: bool = False) -> dict:
             deribit_dvol = f_dvol.result()
             coinbase_ob = f_coinbase.result()
             cme_basis = f_cme.result()
+        finally:
+            pool.shutdown(wait=False)
 
         spot_price = binance.get("prices", {}).get("spot_last", 0.0)
         if spot_price > 0 and cme_basis.get("status") == "OK" and cme_basis.get("cme_last_price"):
@@ -1148,7 +1160,8 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
     intervals_spot = (("1d", 35), ("4h", 35), ("1h", 35), ("15m", 35), ("5m", 35))
 
     if parallel:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=24) as pool:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=16)
+        try:
             f_spot_ticker = pool.submit(safe_get_json, f"{BINANCE_SPOT}/api/v3/ticker/price", {"symbol": SYMBOL})
             f_fut_ticker = pool.submit(safe_get_json, f"{BINANCE_FUTURES}/fapi/v1/ticker/price", {"symbol": SYMBOL})
             f_ticker24 = pool.submit(safe_get_json, f"{BINANCE_SPOT}/api/v3/ticker/24hr", {"symbol": SYMBOL})
@@ -1168,8 +1181,8 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
                 "top_trader_accounts_1h": pool.submit(fetch_ratio, "topLongShortAccountRatio", "1h"),
                 "top_trader_positions_1h": pool.submit(fetch_ratio, "topLongShortPositionRatio", "1h"),
             }
-            f_ob_spot = pool.submit(fetch_orderbook_snapshot, BINANCE_SPOT, "/api/v3/depth", SYMBOL, 500, 1.0)
-            f_ob_fut = pool.submit(fetch_orderbook_snapshot, BINANCE_FUTURES, "/fapi/v1/depth", SYMBOL, 500, 1.0)
+            f_ob_spot = pool.submit(fetch_orderbook_snapshot, BINANCE_SPOT, "/api/v3/depth", SYMBOL, 100, 1.0)
+            f_ob_fut = pool.submit(fetch_orderbook_snapshot, BINANCE_FUTURES, "/fapi/v1/depth", SYMBOL, 100, 1.0)
 
             spot_ticker = f_spot_ticker.result()
             fut_ticker = f_fut_ticker.result()
@@ -1186,6 +1199,8 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
             ratios = {k: v.result() for k, v in f_ratios.items()}
             ob_spot = f_ob_spot.result()
             ob_fut = f_ob_fut.result()
+        finally:
+            pool.shutdown(wait=False)
     else:
         spot_ticker = safe_get_json(f"{BINANCE_SPOT}/api/v3/ticker/price", {"symbol": SYMBOL})
         fut_ticker = safe_get_json(f"{BINANCE_FUTURES}/fapi/v1/ticker/price", {"symbol": SYMBOL})
@@ -1206,6 +1221,69 @@ def fetch_binance_telemetry(parallel: bool = True) -> tuple[dict, dict]:
         }
         ob_spot = fetch_orderbook_snapshot(BINANCE_SPOT, "/api/v3/depth", SYMBOL, 500, 1.0)
         ob_fut = fetch_orderbook_snapshot(BINANCE_FUTURES, "/fapi/v1/depth", SYMBOL, 500, 1.0)
+
+    # Geo-block Fallback Gateway for Cloud environments (US AWS / Streamlit Cloud)
+    if not isinstance(spot_ticker, dict) or not spot_ticker.get("price"):
+        alt_spot = safe_get_json("https://data-api.binance.vision/api/v3/ticker/price", {"symbol": SYMBOL})
+        if isinstance(alt_spot, dict) and alt_spot.get("price"):
+            spot_ticker = alt_spot
+        else:
+            cb_data = safe_get_json("https://api.exchange.coinbase.com/products/BTC-USD/ticker")
+            if isinstance(cb_data, dict) and cb_data.get("price"):
+                spot_ticker = {"symbol": SYMBOL, "price": str(cb_data["price"])}
+
+    if not isinstance(fut_ticker, dict) or not fut_ticker.get("price"):
+        bybit_data = safe_get_json("https://api.bybit.com/v5/market/tickers", {"category": "linear", "symbol": "BTCUSDT"})
+        if isinstance(bybit_data, dict) and bybit_data.get("result", {}).get("list"):
+            bybit_item = bybit_data["result"]["list"][0]
+            fut_ticker = {"symbol": SYMBOL, "price": str(bybit_item.get("lastPrice", "0"))}
+            if not isinstance(premium, dict) or not premium.get("markPrice"):
+                premium = {
+                    "markPrice": str(bybit_item.get("markPrice", fut_ticker["price"])),
+                    "indexPrice": str(bybit_item.get("indexPrice", spot_ticker.get("price", fut_ticker["price"]) if isinstance(spot_ticker, dict) else fut_ticker["price"])),
+                    "lastFundingRate": str(bybit_item.get("fundingRate", "0.0001")),
+                }
+            if not isinstance(live_oi_data, dict) or not live_oi_data.get("openInterest"):
+                live_oi_data = {
+                    "openInterest": str(bybit_item.get("openInterest", "0")),
+                    "time": int(time.time() * 1000),
+                }
+
+    # Futures candles fallback (Bybit Linear V5 if Binance Futures blocked)
+    bybit_map = {"1w": "W", "1d": "D", "4h": "240", "1h": "60", "15m": "15", "5m": "5", "12h": "720", "3d": "D"}
+    interval_ms_map = {"1w": 604800000, "1d": 86400000, "4h": 14400000, "1h": 3600000, "15m": 900000, "5m": 300000, "12h": 43200000, "3d": 259200000}
+    for inter, lim in intervals_fut:
+        if not raw_fut.get(inter) or len(raw_fut[inter]) < 5:
+            bb_code = bybit_map.get(inter, "60")
+            dur_ms = interval_ms_map.get(inter, 3600000)
+            bb_res = safe_get_json("https://api.bybit.com/v5/market/kline", {"category": "linear", "symbol": "BTCUSDT", "interval": bb_code, "limit": lim})
+            if isinstance(bb_res, dict) and bb_res.get("result", {}).get("list"):
+                bb_klines = bb_res["result"]["list"]
+                converted = []
+                for k in reversed(bb_klines):
+                    converted.append([int(k[0]), k[1], k[2], k[3], k[4], k[5], int(k[0]) + dur_ms - 1, k[6], 100, float(k[5]) * 0.5, float(k[6]) * 0.5, "0"])
+                raw_fut[inter] = converted
+
+    # Spot candles fallback (data-api.binance.vision if api.binance.com blocked)
+    for inter, lim in intervals_spot:
+        if not raw_spot.get(inter) or len(raw_spot[inter]) < 5:
+            alt_res = safe_get_json("https://data-api.binance.vision/api/v3/klines", {"symbol": SYMBOL, "interval": inter, "limit": lim})
+            if isinstance(alt_res, list) and len(alt_res) > 0:
+                raw_spot[inter] = alt_res
+
+    if not k1m or len(k1m) < 5:
+        alt_k1m = safe_get_json("https://data-api.binance.vision/api/v3/klines", {"symbol": SYMBOL, "interval": "1m", "limit": 15})
+        if isinstance(alt_k1m, list) and len(alt_k1m) > 0:
+            k1m = alt_k1m
+            spot_flow = fetch_spot_flow(SYMBOL, {**raw_spot, "1m": k1m})
+
+    if not isinstance(ticker24, dict) or not ticker24.get("lastPrice"):
+        alt_t24 = safe_get_json("https://data-api.binance.vision/api/v3/ticker/24hr", {"symbol": SYMBOL})
+        if isinstance(alt_t24, dict):
+            ticker24 = alt_t24
+
+    if not ob_spot or not ob_spot.get("best_bid"):
+        ob_spot = fetch_orderbook_snapshot("https://data-api.binance.vision", "/api/v3/depth", SYMBOL, 100, 1.0)
 
     if not isinstance(spot_ticker, dict) or not isinstance(fut_ticker, dict):
         raise DataIntegrityError("Критические котировки спота или фьючерсов Binance недоступны.")

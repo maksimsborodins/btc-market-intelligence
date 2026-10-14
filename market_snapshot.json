@@ -1,132 +1,133 @@
 {
-  "timestamp_utc": "2026-10-13T12:49:53+00:00",
+  "timestamp_utc": "2026-10-14T06:19:39+00:00",
   "local_timezone": "Europe/Riga",
   "execution_mode": "FAST_MOMENTUM_SCAN",
-  "execution_time_sec": 4.02,
-  "spot_price": 83359.16,
+  "execution_time_sec": 2.78,
+  "spot_price": 83527.77,
   "prices": {
-    "spot_last": 83359.16,
-    "futures_last": 83325.4,
-    "basis_usd": -33.76,
-    "basis_pct": -0.0405,
-    "synchronized_basis_usd": -25.58,
-    "synchronized_basis_pct": -0.0307,
-    "mark_price": 83323.72501449,
-    "index_price": 83349.30652174
+    "spot_last": 83527.77,
+    "futures_last": 83490.9,
+    "basis_usd": -36.87,
+    "basis_pct": -0.0441,
+    "synchronized_basis_usd": -45.78,
+    "synchronized_basis_pct": -0.0548,
+    "mark_price": 83489.05095652,
+    "index_price": 83534.82717391
   },
   "statistical_z_scores": {
-    "oi_zscore": 1.704,
-    "funding_zscore": 1.407,
+    "oi_zscore": -2.2,
+    "funding_zscore": -0.97,
     "note": "Z-Scores using up to 500 historical observations to identify statistical anomalies (> 2.0 or < -2.0)."
   },
   "spot_taker_delta": {
     "metric_definition": "Интервальная спотовая дельта покупок и продаж (Taker Buy - Sell) по закрытым свечам.",
     "1m": {
       "available": true,
-      "delta_btc": 0.224,
-      "total_volume_btc": 2.237,
-      "delta_as_pct_of_volume": 10.017,
-      "quote_volume_usdt": 186295.79,
-      "window_start_utc": "2026-10-13T12:48:00+00:00",
-      "window_end_utc": "2026-10-13T12:48:59+00:00",
+      "delta_btc": -1.889,
+      "total_volume_btc": 5.654,
+      "delta_as_pct_of_volume": -33.412,
+      "quote_volume_usdt": 472419.15,
+      "window_start_utc": "2026-10-14T06:18:00+00:00",
+      "window_end_utc": "2026-10-14T06:18:59+00:00",
       "closed_candles": 1
     },
     "5m": {
       "available": true,
-      "delta_btc": -8.582,
-      "total_volume_btc": 33.434,
-      "delta_as_pct_of_volume": -25.669,
-      "quote_volume_usdt": 2784850.99,
-      "window_start_utc": "2026-10-13T12:40:00+00:00",
-      "window_end_utc": "2026-10-13T12:44:59+00:00",
+      "delta_btc": 3.647,
+      "total_volume_btc": 26.853,
+      "delta_as_pct_of_volume": 13.582,
+      "quote_volume_usdt": 2241508.06,
+      "window_start_utc": "2026-10-14T06:10:00+00:00",
+      "window_end_utc": "2026-10-14T06:14:59+00:00",
       "closed_candles": 1
     },
     "15m": {
       "available": true,
-      "delta_btc": -4.763,
-      "total_volume_btc": 132.144,
-      "delta_as_pct_of_volume": -3.604,
-      "quote_volume_usdt": 11015803.75,
-      "window_start_utc": "2026-10-13T12:30:00+00:00",
-      "window_end_utc": "2026-10-13T12:44:59+00:00",
+      "delta_btc": -13.14,
+      "total_volume_btc": 92.005,
+      "delta_as_pct_of_volume": -14.282,
+      "quote_volume_usdt": 7677608.21,
+      "window_start_utc": "2026-10-14T06:00:00+00:00",
+      "window_end_utc": "2026-10-14T06:14:59+00:00",
       "closed_candles": 1
     },
     "1h": {
       "available": true,
-      "delta_btc": 20.157,
-      "total_volume_btc": 794.424,
-      "delta_as_pct_of_volume": 2.537,
-      "quote_volume_usdt": 66280812.98,
-      "window_start_utc": "2026-10-13T11:00:00+00:00",
-      "window_end_utc": "2026-10-13T11:59:59+00:00",
+      "delta_btc": -91.512,
+      "total_volume_btc": 419.216,
+      "delta_as_pct_of_volume": -21.829,
+      "quote_volume_usdt": 35024661.48,
+      "window_start_utc": "2026-10-14T05:00:00+00:00",
+      "window_end_utc": "2026-10-14T05:59:59+00:00",
       "closed_candles": 1
     },
     "4h": {
       "available": true,
-      "delta_btc": -197.045,
-      "total_volume_btc": 3192.22,
-      "delta_as_pct_of_volume": -6.173,
-      "quote_volume_usdt": 266888900.86,
-      "window_start_utc": "2026-10-13T08:00:00+00:00",
-      "window_end_utc": "2026-10-13T11:59:59+00:00",
+      "delta_btc": -181.198,
+      "total_volume_btc": 1613.472,
+      "delta_as_pct_of_volume": -11.23,
+      "quote_volume_usdt": 134944368.58,
+      "window_start_utc": "2026-10-14T02:00:00+00:00",
+      "window_end_utc": "2026-10-14T05:59:59+00:00",
       "closed_candles": 4
     },
     "24h": {
       "available": true,
-      "delta_btc": 847.043,
-      "total_volume_btc": 15850.942,
-      "delta_as_pct_of_volume": 5.344,
-      "quote_volume_usdt": 1314530195.91,
-      "window_start_utc": "2026-10-12T12:00:00+00:00",
-      "window_end_utc": "2026-10-13T11:59:59+00:00",
+      "delta_btc": -525.454,
+      "total_volume_btc": 13322.356,
+      "delta_as_pct_of_volume": -3.944,
+      "quote_volume_usdt": 1112611669.61,
+      "window_start_utc": "2026-10-13T06:00:00+00:00",
+      "window_end_utc": "2026-10-14T05:59:59+00:00",
       "closed_candles": 24
     },
-    "momentum_ratio_5m": -0.257,
-    "latest_closed_15m_utc": "2026-10-13T12:44:59+00:00",
-    "descriptive_read": "Смешанный спотовый поток ордеров"
+    "momentum_ratio_5m": 0.136,
+    "latest_closed_15m_utc": "2026-10-14T06:14:59+00:00",
+    "descriptive_read": "Отрицательная taker-дельта на споте (1h и 4h); это прокси агрессивных продаж, не самостоятельный bearish-сигнал"
   },
   "quant_bias": {
-    "composite_score": 19,
-    "bias_label": "BULLISH",
+    "composite_score": -54,
+    "bias_label": "STRONG BEARISH",
     "breakdown": {
-      "1d_vwap_trend": -15,
-      "24h_spot_cvd": 19,
-      "spot_orderbook_imbalance": 0,
-      "futures_orderbook_imbalance": 0,
-      "24h_divergence_engine": 15
+      "1d_vwap_trend": -13,
+      "24h_spot_cvd": -17,
+      "spot_orderbook_imbalance": -20,
+      "futures_orderbook_imbalance": -14,
+      "24h_divergence_engine": 0,
+      "oi_squeeze_risk": 10
     },
-    "market_regime": "BALANCED_NORMAL"
+    "market_regime": "HIGH_VOL_SQUEEZE"
   },
   "risk_model": {
-    "atr14": 899.05,
-    "buffer": 1348.57,
-    "direction": "LONG",
-    "entry_price": 83359.16,
+    "atr14": 925.39,
+    "buffer": 1388.09,
+    "direction": "SHORT",
+    "entry_price": 83527.77,
     "long": {
-      "stop_loss": 82010.59,
-      "tp1_rr2": 86056.3,
-      "tp2_rr3": 87404.87,
-      "risk_usd": 1348.57,
-      "risk_pct": 1.62
+      "stop_loss": 82139.68,
+      "tp1_rr2": 86303.95,
+      "tp2_rr3": 87692.04,
+      "risk_usd": 1388.09,
+      "risk_pct": 1.66
     },
     "short": {
-      "stop_loss": 84707.73,
-      "tp1_rr2": 80662.02,
-      "tp2_rr3": 79313.45,
-      "risk_usd": 1348.57,
-      "risk_pct": 1.62
+      "stop_loss": 84915.86,
+      "tp1_rr2": 80751.59,
+      "tp2_rr3": 79363.5,
+      "risk_usd": 1388.09,
+      "risk_pct": 1.66
     },
     "recommended": {
-      "scenario": "LONG",
-      "stop_loss": 82010.59,
-      "tp1_rr2": 86056.3,
-      "tp2_rr3": 87404.87
+      "scenario": "SHORT",
+      "stop_loss": 84915.86,
+      "tp1_rr2": 80751.59,
+      "tp2_rr3": 79363.5
     },
     "liquidity_adjusted": {
       "multiplier": 1.0,
-      "adjusted_buffer": 1348.57,
-      "long_sl": 82010.59,
-      "short_sl": 84707.73,
+      "adjusted_buffer": 1388.09,
+      "long_sl": 82139.68,
+      "short_sl": 84915.86,
       "wall_info": {
         "wall_detected": false,
         "cluster_type": null,
@@ -135,54 +136,54 @@
       }
     },
     "friction_analysis": {
-      "spread_usd": 8.34,
+      "spread_usd": 8.35,
       "taker_fee_pct": 0.0005,
-      "round_trip_fee_usd": 83.36,
-      "total_friction_usd": 91.7,
-      "friction_pct_of_risk": 6.8,
+      "round_trip_fee_usd": 83.53,
+      "total_friction_usd": 91.88,
+      "friction_pct_of_risk": 6.62,
       "effective_rr_tp1": 1.81,
       "effective_rr_tp2": 2.75,
       "breakeven_winrate_rr1_pct": 35.6,
       "breakeven_winrate_rr2_pct": 26.7
     },
     "friction_compensated_targets": {
-      "long_tp1": 86331.4,
-      "long_tp2": 87771.67,
-      "short_tp1": 80386.92,
-      "short_tp2": 78946.65,
-      "compensation_usd": 275.1
+      "long_tp1": 86579.59,
+      "long_tp2": 88059.56,
+      "short_tp1": 80475.95,
+      "short_tp2": 78995.98,
+      "compensation_usd": 275.64
     }
   },
   "atr_risk": {
-    "atr14": 899.05,
-    "buffer": 1348.57,
-    "direction": "LONG",
-    "entry_price": 83359.16,
+    "atr14": 925.39,
+    "buffer": 1388.09,
+    "direction": "SHORT",
+    "entry_price": 83527.77,
     "long": {
-      "stop_loss": 82010.59,
-      "tp1_rr2": 86056.3,
-      "tp2_rr3": 87404.87,
-      "risk_usd": 1348.57,
-      "risk_pct": 1.62
+      "stop_loss": 82139.68,
+      "tp1_rr2": 86303.95,
+      "tp2_rr3": 87692.04,
+      "risk_usd": 1388.09,
+      "risk_pct": 1.66
     },
     "short": {
-      "stop_loss": 84707.73,
-      "tp1_rr2": 80662.02,
-      "tp2_rr3": 79313.45,
-      "risk_usd": 1348.57,
-      "risk_pct": 1.62
+      "stop_loss": 84915.86,
+      "tp1_rr2": 80751.59,
+      "tp2_rr3": 79363.5,
+      "risk_usd": 1388.09,
+      "risk_pct": 1.66
     },
     "recommended": {
-      "scenario": "LONG",
-      "stop_loss": 82010.59,
-      "tp1_rr2": 86056.3,
-      "tp2_rr3": 87404.87
+      "scenario": "SHORT",
+      "stop_loss": 84915.86,
+      "tp1_rr2": 80751.59,
+      "tp2_rr3": 79363.5
     },
     "liquidity_adjusted": {
       "multiplier": 1.0,
-      "adjusted_buffer": 1348.57,
-      "long_sl": 82010.59,
-      "short_sl": 84707.73,
+      "adjusted_buffer": 1388.09,
+      "long_sl": 82139.68,
+      "short_sl": 84915.86,
       "wall_info": {
         "wall_detected": false,
         "cluster_type": null,
@@ -191,193 +192,183 @@
       }
     },
     "friction_analysis": {
-      "spread_usd": 8.34,
+      "spread_usd": 8.35,
       "taker_fee_pct": 0.0005,
-      "round_trip_fee_usd": 83.36,
-      "total_friction_usd": 91.7,
-      "friction_pct_of_risk": 6.8,
+      "round_trip_fee_usd": 83.53,
+      "total_friction_usd": 91.88,
+      "friction_pct_of_risk": 6.62,
       "effective_rr_tp1": 1.81,
       "effective_rr_tp2": 2.75,
       "breakeven_winrate_rr1_pct": 35.6,
       "breakeven_winrate_rr2_pct": 26.7
     },
     "friction_compensated_targets": {
-      "long_tp1": 86331.4,
-      "long_tp2": 87771.67,
-      "short_tp1": 80386.92,
-      "short_tp2": 78946.65,
-      "compensation_usd": 275.1
+      "long_tp1": 86579.59,
+      "long_tp2": 88059.56,
+      "short_tp1": 80475.95,
+      "short_tp2": 78995.98,
+      "compensation_usd": 275.64
     }
   },
   "onchain_metrics": {
-    "mvrv_zscore": 1.06,
+    "mvrv_zscore": 0.98,
     "mvrv_stage": "Fair Value / Early Bull",
     "mvrv_zone": "Fair Value / Early Bull",
-    "nupl": 0.377,
+    "nupl": 0.359,
     "nupl_stage": "Optimism / Anxiety",
     "nupl_zone": "Optimism / Anxiety",
-    "realized_price": 53357.38,
+    "realized_price": 53409.28,
     "status": "OK",
-    "date": "2026-10-06",
+    "date": "2026-10-07",
     "cache_status": "CACHE_HIT"
   },
   "onchain": {
-    "mvrv_zscore": 1.06,
+    "mvrv_zscore": 0.98,
     "mvrv_stage": "Fair Value / Early Bull",
     "mvrv_zone": "Fair Value / Early Bull",
-    "nupl": 0.377,
+    "nupl": 0.359,
     "nupl_stage": "Optimism / Anxiety",
     "nupl_zone": "Optimism / Anxiety",
-    "realized_price": 53357.38,
+    "realized_price": 53409.28,
     "status": "OK",
-    "date": "2026-10-06",
+    "date": "2026-10-07",
     "cache_status": "CACHE_HIT"
   },
   "deribit_dvol": {
     "status": "OK",
     "source": "Deribit BTC DVOL Index",
-    "current_dvol": 37.91,
+    "current_dvol": 38.1,
     "dvol_regime": "Низкая (Compressed Vol)",
-    "date_utc": "2026-10-13T00:00:00+00:00",
+    "date_utc": "2026-10-14T00:00:00+00:00",
     "cache_status": "CACHE_HIT"
   },
   "coinbase_orderbook": {
     "status": "OK",
     "source": "Coinbase Pro BTC-USD L2",
-    "best_bid": 83216.33,
-    "best_ask": 83216.34,
-    "mid_price": 83216.33,
-    "bid_depth_btc": 176.137,
-    "ask_depth_btc": 218.864,
-    "bid_vs_ask_ratio": 0.805,
+    "best_bid": 83459.2,
+    "best_ask": 83459.21,
+    "mid_price": 83459.21,
+    "bid_depth_btc": 252.956,
+    "ask_depth_btc": 287.624,
+    "bid_vs_ask_ratio": 0.879,
     "threshold_pct": 1.0
   },
   "cme_basis": {
     "status": "OK",
     "source": "CME Bitcoin Futures (Front Month BTC=F)",
-    "cme_last_price": 83450.0,
-    "cme_prev_close": 81950.0,
-    "basis_vs_spot_usd": 90.84,
-    "basis_vs_spot_pct": 0.109,
-    "weekend_gap_usd": -90.84,
-    "regular_market_time_utc": "2026-10-13T12:33:12+00:00"
+    "cme_last_price": 83560.0,
+    "cme_prev_close": 82470.0,
+    "basis_vs_spot_usd": 32.23,
+    "basis_vs_spot_pct": 0.039,
+    "weekend_gap_usd": -32.23,
+    "regular_market_time_utc": "2026-10-14T06:02:09+00:00"
   },
   "binance": {
     "prices": {
-      "spot_last": 83359.16,
-      "futures_last": 83325.4,
-      "basis_usd": -33.76,
-      "basis_pct": -0.0405,
-      "synchronized_basis_usd": -25.58,
-      "synchronized_basis_pct": -0.0307,
-      "mark_price": 83323.72501449,
-      "index_price": 83349.30652174
+      "spot_last": 83527.77,
+      "futures_last": 83490.9,
+      "basis_usd": -36.87,
+      "basis_pct": -0.0441,
+      "synchronized_basis_usd": -45.78,
+      "synchronized_basis_pct": -0.0548,
+      "mark_price": 83489.05095652,
+      "index_price": 83534.82717391
     },
     "spot_24h_summary": {
-      "change_pct": 0.48,
+      "change_pct": -0.079,
       "high": 84168.0,
-      "low": 81033.66,
-      "quote_volume_usdt": 1290458957.583059
+      "low": 82972.74,
+      "quote_volume_usdt": 1109246604.1677763
     },
     "spot_taker_delta": {
       "metric_definition": "Интервальная спотовая дельта покупок и продаж (Taker Buy - Sell) по закрытым свечам.",
       "1m": {
         "available": true,
-        "delta_btc": 0.224,
-        "total_volume_btc": 2.237,
-        "delta_as_pct_of_volume": 10.017,
-        "quote_volume_usdt": 186295.79,
-        "window_start_utc": "2026-10-13T12:48:00+00:00",
-        "window_end_utc": "2026-10-13T12:48:59+00:00",
+        "delta_btc": -1.889,
+        "total_volume_btc": 5.654,
+        "delta_as_pct_of_volume": -33.412,
+        "quote_volume_usdt": 472419.15,
+        "window_start_utc": "2026-10-14T06:18:00+00:00",
+        "window_end_utc": "2026-10-14T06:18:59+00:00",
         "closed_candles": 1
       },
       "5m": {
         "available": true,
-        "delta_btc": -8.582,
-        "total_volume_btc": 33.434,
-        "delta_as_pct_of_volume": -25.669,
-        "quote_volume_usdt": 2784850.99,
-        "window_start_utc": "2026-10-13T12:40:00+00:00",
-        "window_end_utc": "2026-10-13T12:44:59+00:00",
+        "delta_btc": 3.647,
+        "total_volume_btc": 26.853,
+        "delta_as_pct_of_volume": 13.582,
+        "quote_volume_usdt": 2241508.06,
+        "window_start_utc": "2026-10-14T06:10:00+00:00",
+        "window_end_utc": "2026-10-14T06:14:59+00:00",
         "closed_candles": 1
       },
       "15m": {
         "available": true,
-        "delta_btc": -4.763,
-        "total_volume_btc": 132.144,
-        "delta_as_pct_of_volume": -3.604,
-        "quote_volume_usdt": 11015803.75,
-        "window_start_utc": "2026-10-13T12:30:00+00:00",
-        "window_end_utc": "2026-10-13T12:44:59+00:00",
+        "delta_btc": -13.14,
+        "total_volume_btc": 92.005,
+        "delta_as_pct_of_volume": -14.282,
+        "quote_volume_usdt": 7677608.21,
+        "window_start_utc": "2026-10-14T06:00:00+00:00",
+        "window_end_utc": "2026-10-14T06:14:59+00:00",
         "closed_candles": 1
       },
       "1h": {
         "available": true,
-        "delta_btc": 20.157,
-        "total_volume_btc": 794.424,
-        "delta_as_pct_of_volume": 2.537,
-        "quote_volume_usdt": 66280812.98,
-        "window_start_utc": "2026-10-13T11:00:00+00:00",
-        "window_end_utc": "2026-10-13T11:59:59+00:00",
+        "delta_btc": -91.512,
+        "total_volume_btc": 419.216,
+        "delta_as_pct_of_volume": -21.829,
+        "quote_volume_usdt": 35024661.48,
+        "window_start_utc": "2026-10-14T05:00:00+00:00",
+        "window_end_utc": "2026-10-14T05:59:59+00:00",
         "closed_candles": 1
       },
       "4h": {
         "available": true,
-        "delta_btc": -197.045,
-        "total_volume_btc": 3192.22,
-        "delta_as_pct_of_volume": -6.173,
-        "quote_volume_usdt": 266888900.86,
-        "window_start_utc": "2026-10-13T08:00:00+00:00",
-        "window_end_utc": "2026-10-13T11:59:59+00:00",
+        "delta_btc": -181.198,
+        "total_volume_btc": 1613.472,
+        "delta_as_pct_of_volume": -11.23,
+        "quote_volume_usdt": 134944368.58,
+        "window_start_utc": "2026-10-14T02:00:00+00:00",
+        "window_end_utc": "2026-10-14T05:59:59+00:00",
         "closed_candles": 4
       },
       "24h": {
         "available": true,
-        "delta_btc": 847.043,
-        "total_volume_btc": 15850.942,
-        "delta_as_pct_of_volume": 5.344,
-        "quote_volume_usdt": 1314530195.91,
-        "window_start_utc": "2026-10-12T12:00:00+00:00",
-        "window_end_utc": "2026-10-13T11:59:59+00:00",
+        "delta_btc": -525.454,
+        "total_volume_btc": 13322.356,
+        "delta_as_pct_of_volume": -3.944,
+        "quote_volume_usdt": 1112611669.61,
+        "window_start_utc": "2026-10-13T06:00:00+00:00",
+        "window_end_utc": "2026-10-14T05:59:59+00:00",
         "closed_candles": 24
       },
-      "momentum_ratio_5m": -0.257,
-      "latest_closed_15m_utc": "2026-10-13T12:44:59+00:00",
-      "descriptive_read": "Смешанный спотовый поток ордеров"
+      "momentum_ratio_5m": 0.136,
+      "latest_closed_15m_utc": "2026-10-14T06:14:59+00:00",
+      "descriptive_read": "Отрицательная taker-дельта на споте (1h и 4h); это прокси агрессивных продаж, не самостоятельный bearish-сигнал"
     },
     "derivatives": {
-      "live_open_interest_btc": 94442.595,
-      "oi_age_seconds": 8.74,
+      "live_open_interest_btc": 91927.76,
+      "oi_age_seconds": 4.15,
       "oi_change_deltas": {
         "1h": {
-          "available": true,
-          "change_pct": 0.847,
-          "reference_utc": "2026-10-13T12:00:00+00:00",
-          "sample_age_hours": 0.83
+          "available": false,
+          "reason": "Ближайший снимок 1.33ч назад; отклонение от целевого горизонта 1ч больше 0.25ч"
         },
         "4h": {
           "available": true,
-          "change_pct": 0.27,
-          "reference_utc": "2026-10-13T09:00:00+00:00",
-          "sample_age_hours": 3.83
+          "change_pct": 0.072,
+          "reference_utc": "2026-10-14T02:00:00+00:00",
+          "sample_age_hours": 4.33
         },
         "24h": {
           "available": true,
-          "change_pct": 0.416,
-          "reference_utc": "2026-10-12T13:00:00+00:00",
-          "sample_age_hours": 23.83
+          "change_pct": -1.522,
+          "reference_utc": "2026-10-13T06:00:00+00:00",
+          "sample_age_hours": 24.33
         }
       },
-      "current_funding_rate_pct": 0.0072,
+      "current_funding_rate_pct": -0.0009,
       "recent_funding_history": [
-        {
-          "rate_pct": -0.0004,
-          "time_utc": "2026-10-10T08:00:00+00:00"
-        },
-        {
-          "rate_pct": 0.0005,
-          "time_utc": "2026-10-10T16:00:00+00:00"
-        },
         {
           "rate_pct": -0.0027,
           "time_utc": "2026-10-11T00:00:00+00:00"
@@ -409,56 +400,64 @@
         {
           "rate_pct": 0.0083,
           "time_utc": "2026-10-13T08:00:00+00:00"
+        },
+        {
+          "rate_pct": 0.0035,
+          "time_utc": "2026-10-13T16:00:00+00:00"
+        },
+        {
+          "rate_pct": -0.001,
+          "time_utc": "2026-10-14T00:00:00+00:00"
         }
       ],
       "positioning_ratios": {
         "global_accounts_long_short_1h": {
           "period": "1h",
-          "timestamp_utc": "2026-10-13T12:00:00+00:00",
-          "longShortRatio": 1.1993,
-          "longAccount": 0.5453,
-          "shortAccount": 0.4547
+          "timestamp_utc": "2026-10-14T06:00:00+00:00",
+          "longShortRatio": 1.2769,
+          "longAccount": 0.5608,
+          "shortAccount": 0.4392
         },
         "futures_taker_buy_sell_1h": {
           "period": "1h",
-          "timestamp_utc": "2026-10-13T11:00:00+00:00",
-          "buySellRatio": 1.1954
+          "timestamp_utc": "2026-10-14T05:00:00+00:00",
+          "buySellRatio": 0.8989
         },
         "top_trader_accounts_1h": {
           "period": "1h",
-          "timestamp_utc": "2026-10-13T12:00:00+00:00",
-          "longShortRatio": 1.2609,
-          "longAccount": 0.5577,
-          "shortAccount": 0.4423
+          "timestamp_utc": "2026-10-14T06:00:00+00:00",
+          "longShortRatio": 1.3502,
+          "longAccount": 0.5745,
+          "shortAccount": 0.4255
         },
         "top_trader_positions_1h": {
           "period": "1h",
-          "timestamp_utc": "2026-10-13T12:00:00+00:00",
-          "longShortRatio": 1.571,
-          "longAccount": 0.6111,
-          "shortAccount": 0.3889
+          "timestamp_utc": "2026-10-14T06:00:00+00:00",
+          "longShortRatio": 1.525,
+          "longAccount": 0.604,
+          "shortAccount": 0.396
         }
       }
     },
     "orderbook_depth": {
       "spot": {
-        "best_bid": 83359.16,
-        "best_ask": 83359.17,
+        "best_bid": 83527.77,
+        "best_ask": 83527.78,
         "spread_bps": 0.001,
         "threshold_pct": 1.0,
-        "bid_depth_base_qty": 108.487,
-        "ask_depth_base_qty": 109.295,
-        "bid_vs_ask_ratio": 0.993,
+        "bid_depth_base_qty": 5.667,
+        "ask_depth_base_qty": 17.213,
+        "bid_vs_ask_ratio": 0.329,
         "interpretation_limit": "Snapshot strictly measuring bids/asks within ±1.0% of mid price. Identifies concentrated limit order walls."
       },
       "futures": {
-        "best_bid": 83320.1,
-        "best_ask": 83320.2,
+        "best_bid": 83484.7,
+        "best_ask": 83484.8,
         "spread_bps": 0.012,
         "threshold_pct": 1.0,
-        "bid_depth_base_qty": 171.349,
-        "ask_depth_base_qty": 172.216,
-        "bid_vs_ask_ratio": 0.995,
+        "bid_depth_base_qty": 18.875,
+        "ask_depth_base_qty": 33.695,
+        "bid_vs_ask_ratio": 0.56,
         "interpretation_limit": "Snapshot strictly measuring bids/asks within ±1.0% of mid price. Identifies concentrated limit order walls."
       }
     },
@@ -517,27 +516,27 @@
       "3d": {
         "available": true,
         "timeframe": "3d",
-        "last_closed_candle_utc": "2026-10-10T23:59:59+00:00",
-        "last_closed_price": 82941.0,
-        "return_over_last_20_candles_pct": 30.468,
-        "return_last_1_candle_pct": -0.409,
-        "return_last_4_candles_pct": -0.623,
-        "return_last_24_candles_pct": 28.094,
-        "ema20": 78455.14,
+        "last_closed_candle_utc": "2026-10-13T23:59:59+00:00",
+        "last_closed_price": 83125.7,
+        "return_over_last_20_candles_pct": 31.914,
+        "return_last_1_candle_pct": 0.223,
+        "return_last_4_candles_pct": -2.009,
+        "return_last_24_candles_pct": 30.804,
+        "ema20": 78831.98,
         "ema50": null,
-        "rolling_vwap20_proxy": 78634.69,
-        "close_vs_rolling_vwap20_pct": 5.476,
-        "macd_12_26_line": 5588.739,
-        "macd_12_26_9_histogram_approx": -364.713,
-        "bollinger_20_upper": 90913.96,
-        "bollinger_20_mid": 78673.54,
-        "bollinger_20_lower": 66433.13,
-        "bollinger_percent_b": 0.674,
+        "rolling_vwap20_proxy": 79398.67,
+        "close_vs_rolling_vwap20_pct": 4.694,
+        "macd_12_26_line": 5387.842,
+        "macd_12_26_9_histogram_approx": -661.886,
+        "bollinger_20_upper": 89714.5,
+        "bollinger_20_mid": 79679.08,
+        "bollinger_20_lower": 69643.66,
+        "bollinger_percent_b": 0.672,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 59.03,
-        "atr14_price": 4068.11,
-        "atr14_pct": 4.905,
+        "rsi14_approx": 61.17,
+        "atr14_price": 4092.31,
+        "atr14_pct": 4.923,
         "confirmed_swing_highs_last4": [
           65482.7,
           82282.8,
@@ -553,42 +552,42 @@
         "latest_confirmed_swing_high": 87249.6,
         "latest_confirmed_swing_low": 74909.4,
         "recent_range_high_20_closed_candles": 87385.1,
-        "recent_range_low_20_closed_candles": 62484.2,
+        "recent_range_low_20_closed_candles": 62681.1,
         "prior_20_candle_high_excluding_latest": 87385.1,
         "prior_20_candle_low_excluding_latest": 62484.2,
         "close_breakout_state": "none",
         "swing_structure_label": "LH_LL_downtrend",
-        "last_candle_quote_volume_usdt": 30304245859.78,
-        "average_quote_volume_previous_20": 33844924504.27,
-        "volume_vs_previous_20_average": 0.895,
-        "close_location_in_candle_0_to_1": 0.823,
-        "candle_body_pct": 0.409,
+        "last_candle_quote_volume_usdt": 29160908735.74,
+        "average_quote_volume_previous_20": 34450414375.42,
+        "volume_vs_previous_20_average": 0.846,
+        "close_location_in_candle_0_to_1": 0.638,
+        "candle_body_pct": 0.223,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "1d": {
         "available": true,
         "timeframe": "1d",
-        "last_closed_candle_utc": "2026-10-12T23:59:59+00:00",
-        "last_closed_price": 81813.4,
-        "return_over_last_20_candles_pct": -5.043,
-        "return_last_1_candle_pct": -2.281,
-        "return_last_4_candles_pct": 0.125,
-        "return_last_24_candles_pct": 1.175,
-        "ema20": 82892.22,
+        "last_closed_candle_utc": "2026-10-13T23:59:59+00:00",
+        "last_closed_price": 83125.7,
+        "return_over_last_20_candles_pct": -1.457,
+        "return_last_1_candle_pct": 1.604,
+        "return_last_4_candles_pct": 0.663,
+        "return_last_24_candles_pct": 2.339,
+        "ema20": 82911.16,
         "ema50": null,
-        "rolling_vwap20_proxy": 84091.45,
-        "close_vs_rolling_vwap20_pct": -2.709,
-        "macd_12_26_line": 993.696,
-        "macd_12_26_9_histogram_approx": -799.764,
-        "bollinger_20_upper": 86360.65,
-        "bollinger_20_mid": 84002.95,
-        "bollinger_20_lower": 81645.25,
-        "bollinger_percent_b": 0.036,
+        "rolling_vwap20_proxy": 83933.77,
+        "close_vs_rolling_vwap20_pct": -0.963,
+        "macd_12_26_line": 897.724,
+        "macd_12_26_9_histogram_approx": -698.696,
+        "bollinger_20_upper": 86323.23,
+        "bollinger_20_mid": 83941.48,
+        "bollinger_20_lower": 81559.73,
+        "bollinger_percent_b": 0.329,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 43.41,
-        "atr14_price": 2076.07,
-        "atr14_pct": 2.538,
+        "rsi14_approx": 48.17,
+        "atr14_price": 2170.26,
+        "atr14_pct": 2.611,
         "confirmed_swing_highs_last4": [
           79570.9,
           87385.1,
@@ -609,37 +608,37 @@
         "prior_20_candle_low_excluding_latest": 80344.8,
         "close_breakout_state": "none",
         "swing_structure_label": "LH_LL_downtrend",
-        "last_candle_quote_volume_usdt": 11788186814.74,
-        "average_quote_volume_previous_20": 10843869597.53,
-        "volume_vs_previous_20_average": 1.087,
-        "close_location_in_candle_0_to_1": 0.043,
-        "candle_body_pct": 2.281,
+        "last_candle_quote_volume_usdt": 12247294805.21,
+        "average_quote_volume_previous_20": 10705154156.88,
+        "volume_vs_previous_20_average": 1.144,
+        "close_location_in_candle_0_to_1": 0.68,
+        "candle_body_pct": 1.604,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "12h": {
         "available": true,
         "timeframe": "12h",
-        "last_closed_candle_utc": "2026-10-13T11:59:59+00:00",
-        "last_closed_price": 83325.2,
-        "return_over_last_20_candles_pct": -1.547,
-        "return_last_1_candle_pct": 1.848,
-        "return_last_4_candles_pct": 0.244,
-        "return_last_24_candles_pct": -0.659,
-        "ema20": 83440.92,
+        "last_closed_candle_utc": "2026-10-13T23:59:59+00:00",
+        "last_closed_price": 83125.7,
+        "return_over_last_20_candles_pct": -1.871,
+        "return_last_1_candle_pct": -0.239,
+        "return_last_4_candles_pct": -0.713,
+        "return_last_24_candles_pct": -2.009,
+        "ema20": 83405.97,
         "ema50": null,
-        "rolling_vwap20_proxy": 83715.94,
-        "close_vs_rolling_vwap20_pct": -0.467,
-        "macd_12_26_line": -524.12,
-        "macd_12_26_9_histogram_approx": 23.375,
-        "bollinger_20_upper": 86829.02,
-        "bollinger_20_mid": 83906.08,
-        "bollinger_20_lower": 80983.14,
-        "bollinger_percent_b": 0.401,
+        "rolling_vwap20_proxy": 83676.37,
+        "close_vs_rolling_vwap20_pct": -0.658,
+        "macd_12_26_line": -527.939,
+        "macd_12_26_9_histogram_approx": 69.062,
+        "bollinger_20_upper": 86744.16,
+        "bollinger_20_mid": 83826.83,
+        "bollinger_20_lower": 80909.51,
+        "bollinger_percent_b": 0.38,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 37.09,
-        "atr14_price": 1414.37,
-        "atr14_pct": 1.697,
+        "rsi14_approx": 38.84,
+        "atr14_price": 1379.98,
+        "atr14_pct": 1.66,
         "confirmed_swing_highs_last4": [
           87249.6,
           86976.1,
@@ -659,212 +658,215 @@
         "prior_20_candle_low_excluding_latest": 80344.8,
         "close_breakout_state": "none",
         "swing_structure_label": "expanding_range",
-        "last_candle_quote_volume_usdt": 8021013682.68,
-        "average_quote_volume_previous_20": 4639208459.04,
-        "volume_vs_previous_20_average": 1.729,
-        "close_location_in_candle_0_to_1": 0.743,
-        "candle_body_pct": 1.848,
+        "last_candle_quote_volume_usdt": 4226281122.54,
+        "average_quote_volume_previous_20": 4967756569.61,
+        "volume_vs_previous_20_average": 0.851,
+        "close_location_in_candle_0_to_1": 0.232,
+        "candle_body_pct": 0.239,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "4h": {
         "available": true,
         "timeframe": "4h",
-        "last_closed_candle_utc": "2026-10-13T11:59:59+00:00",
-        "last_closed_price": 83325.2,
-        "return_over_last_20_candles_pct": 0.927,
-        "return_last_1_candle_pct": -0.601,
-        "return_last_4_candles_pct": 0.594,
-        "return_last_24_candles_pct": 0.15,
-        "ema20": 83079.73,
+        "last_closed_candle_utc": "2026-10-14T03:59:59+00:00",
+        "last_closed_price": 83663.5,
+        "return_over_last_20_candles_pct": 0.755,
+        "return_last_1_candle_pct": 0.647,
+        "return_last_4_candles_pct": 0.406,
+        "return_last_24_candles_pct": 1.337,
+        "ema20": 83132.93,
         "ema50": null,
-        "rolling_vwap20_proxy": 83139.28,
-        "close_vs_rolling_vwap20_pct": 0.224,
-        "macd_12_26_line": 225.687,
-        "macd_12_26_9_histogram_approx": -87.459,
-        "bollinger_20_upper": 84173.78,
-        "bollinger_20_mid": 83167.68,
-        "bollinger_20_lower": 82161.57,
-        "bollinger_percent_b": 0.578,
+        "rolling_vwap20_proxy": 83205.19,
+        "close_vs_rolling_vwap20_pct": 0.551,
+        "macd_12_26_line": 232.456,
+        "macd_12_26_9_histogram_approx": -6.27,
+        "bollinger_20_upper": 84246.06,
+        "bollinger_20_mid": 83257.36,
+        "bollinger_20_lower": 82268.66,
+        "bollinger_percent_b": 0.705,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 53.94,
-        "atr14_price": 899.05,
-        "atr14_pct": 1.079,
+        "rsi14_approx": 50.29,
+        "atr14_price": 925.39,
+        "atr14_pct": 1.106,
         "confirmed_swing_highs_last4": [
-          83499.9,
           83137.2,
           84180.0,
-          84340.2
+          84340.2,
+          84134.2
         ],
         "confirmed_swing_lows_last4": [
-          80344.8,
           82241.5,
           82751.1,
-          80985.0
+          80985.0,
+          82912.8
         ],
-        "latest_confirmed_swing_high": 84340.2,
-        "latest_confirmed_swing_low": 80985.0,
+        "latest_confirmed_swing_high": 84134.2,
+        "latest_confirmed_swing_low": 82912.8,
         "recent_range_high_20_closed_candles": 84340.2,
         "recent_range_low_20_closed_candles": 80985.0,
         "prior_20_candle_high_excluding_latest": 84340.2,
         "prior_20_candle_low_excluding_latest": 80985.0,
         "close_breakout_state": "none",
-        "swing_structure_label": "expanding_range",
-        "last_candle_quote_volume_usdt": 2209973558.29,
-        "average_quote_volume_previous_20": 1289596535.14,
-        "volume_vs_previous_20_average": 1.714,
-        "close_location_in_candle_0_to_1": 0.212,
-        "candle_body_pct": 0.601,
+        "swing_structure_label": "range_or_transition",
+        "last_candle_quote_volume_usdt": 1554167415.35,
+        "average_quote_volume_previous_20": 1505970802.9,
+        "volume_vs_previous_20_average": 1.032,
+        "close_location_in_candle_0_to_1": 0.659,
+        "candle_body_pct": 0.647,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "1h": {
         "available": true,
         "timeframe": "1h",
-        "last_closed_candle_utc": "2026-10-13T11:59:59+00:00",
-        "last_closed_price": 83325.2,
-        "return_over_last_20_candles_pct": 0.78,
-        "return_last_1_candle_pct": 0.018,
-        "return_last_4_candles_pct": -0.601,
-        "return_last_24_candles_pct": -0.041,
-        "ema20": 83222.11,
+        "last_closed_candle_utc": "2026-10-14T05:59:59+00:00",
+        "last_closed_price": 83434.6,
+        "return_over_last_20_candles_pct": -0.187,
+        "return_last_1_candle_pct": -0.322,
+        "return_last_4_candles_pct": 0.184,
+        "return_last_24_candles_pct": -0.254,
+        "ema20": 83341.63,
         "ema50": null,
-        "rolling_vwap20_proxy": 82760.57,
-        "close_vs_rolling_vwap20_pct": 0.682,
-        "macd_12_26_line": 35.112,
-        "macd_12_26_9_histogram_approx": 132.269,
-        "bollinger_20_upper": 84237.11,
-        "bollinger_20_mid": 82906.68,
-        "bollinger_20_lower": 81576.24,
-        "bollinger_percent_b": 0.657,
+        "rolling_vwap20_proxy": 83386.09,
+        "close_vs_rolling_vwap20_pct": 0.058,
+        "macd_12_26_line": 157.126,
+        "macd_12_26_9_histogram_approx": 5.578,
+        "bollinger_20_upper": 83705.35,
+        "bollinger_20_mid": 83369.9,
+        "bollinger_20_lower": 83034.46,
+        "bollinger_percent_b": 0.596,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 59.33,
-        "atr14_price": 589.5,
-        "atr14_pct": 0.707,
+        "rsi14_approx": 50.96,
+        "atr14_price": 322.67,
+        "atr14_pct": 0.387,
         "confirmed_swing_highs_last4": [
-          84340.2,
-          83128.6,
-          84134.2
+          84134.2,
+          83702.0,
+          83829.0,
+          83942.1
         ],
         "confirmed_swing_lows_last4": [
-          83455.6,
-          82349.1,
-          82244.0,
-          80985.0
+          80985.0,
+          83063.4,
+          82912.8,
+          83070.7
         ],
-        "latest_confirmed_swing_high": 84134.2,
-        "latest_confirmed_swing_low": 80985.0,
-        "recent_range_high_20_closed_candles": 84134.2,
-        "recent_range_low_20_closed_candles": 80985.0,
-        "prior_20_candle_high_excluding_latest": 84134.2,
-        "prior_20_candle_low_excluding_latest": 80985.0,
+        "latest_confirmed_swing_high": 83942.1,
+        "latest_confirmed_swing_low": 83070.7,
+        "recent_range_high_20_closed_candles": 83942.1,
+        "recent_range_low_20_closed_candles": 82912.8,
+        "prior_20_candle_high_excluding_latest": 83942.1,
+        "prior_20_candle_low_excluding_latest": 82912.8,
         "close_breakout_state": "none",
-        "swing_structure_label": "expanding_range",
-        "last_candle_quote_volume_usdt": 616165350.88,
-        "average_quote_volume_previous_20": 570635990.17,
-        "volume_vs_previous_20_average": 1.08,
-        "close_location_in_candle_0_to_1": 0.367,
-        "candle_body_pct": 0.018,
+        "swing_structure_label": "HH_HL_uptrend",
+        "last_candle_quote_volume_usdt": 283021972.27,
+        "average_quote_volume_previous_20": 379029760.97,
+        "volume_vs_previous_20_average": 0.747,
+        "close_location_in_candle_0_to_1": 0.188,
+        "candle_body_pct": 0.322,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "15m": {
         "available": true,
         "timeframe": "15m",
-        "last_closed_candle_utc": "2026-10-13T12:44:59+00:00",
-        "last_closed_price": 83188.4,
-        "return_over_last_20_candles_pct": -0.742,
-        "return_last_1_candle_pct": -0.222,
-        "return_last_4_candles_pct": -0.387,
-        "return_last_24_candles_pct": -0.599,
-        "ema20": 83434.83,
+        "last_closed_candle_utc": "2026-10-14T06:14:59+00:00",
+        "last_closed_price": 83548.0,
+        "return_over_last_20_candles_pct": 0.311,
+        "return_last_1_candle_pct": 0.136,
+        "return_last_4_candles_pct": 0.06,
+        "return_last_24_candles_pct": 0.231,
+        "ema20": 83537.95,
         "ema50": null,
-        "rolling_vwap20_proxy": 83516.55,
-        "close_vs_rolling_vwap20_pct": -0.393,
-        "macd_12_26_line": -110.239,
-        "macd_12_26_9_histogram_approx": -9.339,
-        "bollinger_20_upper": 83985.15,
-        "bollinger_20_mid": 83505.46,
-        "bollinger_20_lower": 83025.77,
-        "bollinger_percent_b": 0.17,
+        "rolling_vwap20_proxy": 83561.48,
+        "close_vs_rolling_vwap20_pct": -0.016,
+        "macd_12_26_line": 68.098,
+        "macd_12_26_9_histogram_approx": -46.634,
+        "bollinger_20_upper": 83890.98,
+        "bollinger_20_mid": 83532.04,
+        "bollinger_20_lower": 83173.09,
+        "bollinger_percent_b": 0.522,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 39.62,
-        "atr14_price": 234.93,
-        "atr14_pct": 0.282,
+        "rsi14_approx": 57.64,
+        "atr14_price": 182.56,
+        "atr14_pct": 0.219,
         "confirmed_swing_highs_last4": [
-          83887.7,
-          84134.2,
-          83693.3,
-          83702.0
+          83656.6,
+          83410.0,
+          83942.1,
+          83850.0
         ],
         "confirmed_swing_lows_last4": [
-          83547.6,
-          83608.8,
-          83334.7,
-          83107.0
+          83127.0,
+          83176.8,
+          83574.2,
+          83395.2
         ],
-        "latest_confirmed_swing_high": 83702.0,
-        "latest_confirmed_swing_low": 83107.0,
-        "recent_range_high_20_closed_candles": 84134.2,
-        "recent_range_low_20_closed_candles": 83063.4,
-        "prior_20_candle_high_excluding_latest": 84134.2,
-        "prior_20_candle_low_excluding_latest": 83063.4,
+        "latest_confirmed_swing_high": 83850.0,
+        "latest_confirmed_swing_low": 83395.2,
+        "recent_range_high_20_closed_candles": 83942.1,
+        "recent_range_low_20_closed_candles": 83127.0,
+        "prior_20_candle_high_excluding_latest": 83942.1,
+        "prior_20_candle_low_excluding_latest": 83127.0,
         "close_breakout_state": "none",
-        "swing_structure_label": "expanding_range",
-        "last_candle_quote_volume_usdt": 95850153.4,
-        "average_quote_volume_previous_20": 146673463.67,
-        "volume_vs_previous_20_average": 0.653,
-        "close_location_in_candle_0_to_1": 0.0,
-        "candle_body_pct": 0.222,
+        "swing_structure_label": "LH_LL_downtrend",
+        "last_candle_quote_volume_usdt": 73025635.95,
+        "average_quote_volume_previous_20": 78975720.75,
+        "volume_vs_previous_20_average": 0.925,
+        "close_location_in_candle_0_to_1": 1.0,
+        "candle_body_pct": 0.136,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "5m": {
         "available": true,
         "timeframe": "5m",
-        "last_closed_candle_utc": "2026-10-13T12:44:59+00:00",
-        "last_closed_price": 83188.4,
-        "return_over_last_20_candles_pct": 0.073,
-        "return_last_1_candle_pct": -0.114,
-        "return_last_4_candles_pct": -0.125,
-        "return_last_24_candles_pct": -0.074,
-        "ema20": 83320.34,
+        "last_closed_candle_utc": "2026-10-14T06:14:59+00:00",
+        "last_closed_price": 83548.0,
+        "return_over_last_20_candles_pct": -0.278,
+        "return_last_1_candle_pct": 0.224,
+        "return_last_4_candles_pct": 0.183,
+        "return_last_24_candles_pct": -0.164,
+        "ema20": 83527.32,
         "ema50": null,
-        "rolling_vwap20_proxy": 83350.75,
-        "close_vs_rolling_vwap20_pct": -0.195,
-        "macd_12_26_line": -36.672,
-        "macd_12_26_9_histogram_approx": -8.755,
-        "bollinger_20_upper": 83608.24,
-        "bollinger_20_mid": 83334.28,
-        "bollinger_20_lower": 83060.32,
-        "bollinger_percent_b": 0.234,
+        "rolling_vwap20_proxy": 83538.91,
+        "close_vs_rolling_vwap20_pct": 0.011,
+        "macd_12_26_line": -87.246,
+        "macd_12_26_9_histogram_approx": 4.437,
+        "bollinger_20_upper": 83772.18,
+        "bollinger_20_mid": 83539.59,
+        "bollinger_20_lower": 83307.0,
+        "bollinger_percent_b": 0.518,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 37.2,
-        "atr14_price": 122.69,
-        "atr14_pct": 0.147,
+        "rsi14_approx": 47.35,
+        "atr14_price": 108.31,
+        "atr14_pct": 0.13,
         "confirmed_swing_highs_last4": [
-          83702.0,
-          83458.5
+          83733.5,
+          83850.0,
+          83750.0,
+          83615.9
         ],
         "confirmed_swing_lows_last4": [
-          83196.4,
-          83107.0,
-          83179.0,
-          83063.4
+          83574.2,
+          83663.6,
+          83395.2,
+          83463.5
         ],
-        "latest_confirmed_swing_high": 83458.5,
-        "latest_confirmed_swing_low": 83063.4,
-        "recent_range_high_20_closed_candles": 83702.0,
-        "recent_range_low_20_closed_candles": 83063.4,
-        "prior_20_candle_high_excluding_latest": 83702.0,
-        "prior_20_candle_low_excluding_latest": 83063.4,
+        "latest_confirmed_swing_high": 83615.9,
+        "latest_confirmed_swing_low": 83463.5,
+        "recent_range_high_20_closed_candles": 83832.1,
+        "recent_range_low_20_closed_candles": 83306.1,
+        "prior_20_candle_high_excluding_latest": 83850.0,
+        "prior_20_candle_low_excluding_latest": 83306.1,
         "close_breakout_state": "none",
-        "swing_structure_label": "LH_LL_downtrend",
-        "last_candle_quote_volume_usdt": 24550392.2,
-        "average_quote_volume_previous_20": 49467794.7,
-        "volume_vs_previous_20_average": 0.496,
-        "close_location_in_candle_0_to_1": 0.0,
-        "candle_body_pct": 0.114,
+        "swing_structure_label": "range_or_transition",
+        "last_candle_quote_volume_usdt": 34721379.12,
+        "average_quote_volume_previous_20": 22514949.14,
+        "volume_vs_previous_20_average": 1.542,
+        "close_location_in_candle_0_to_1": 1.0,
+        "candle_body_pct": 0.224,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       }
     },
@@ -872,27 +874,27 @@
       "1d": {
         "available": true,
         "timeframe": "1d",
-        "last_closed_candle_utc": "2026-10-12T23:59:59+00:00",
-        "last_closed_price": 81850.0,
-        "return_over_last_20_candles_pct": -5.056,
-        "return_last_1_candle_pct": -2.296,
-        "return_last_4_candles_pct": 0.117,
-        "return_last_24_candles_pct": 1.194,
-        "ema20": 82935.25,
+        "last_closed_candle_utc": "2026-10-13T23:59:59+00:00",
+        "last_closed_price": 83169.0,
+        "return_over_last_20_candles_pct": -1.456,
+        "return_last_1_candle_pct": 1.611,
+        "return_last_4_candles_pct": 0.646,
+        "return_last_24_candles_pct": 2.362,
+        "ema20": 82954.12,
         "ema50": null,
-        "rolling_vwap20_proxy": 84153.91,
-        "close_vs_rolling_vwap20_pct": -2.738,
-        "macd_12_26_line": 996.564,
-        "macd_12_26_9_histogram_approx": -800.397,
-        "bollinger_20_upper": 86404.33,
-        "bollinger_20_mid": 84046.1,
-        "bollinger_20_lower": 81687.86,
-        "bollinger_percent_b": 0.034,
+        "rolling_vwap20_proxy": 84016.16,
+        "close_vs_rolling_vwap20_pct": -1.008,
+        "macd_12_26_line": 900.558,
+        "macd_12_26_9_histogram_approx": -699.611,
+        "bollinger_20_upper": 86366.96,
+        "bollinger_20_mid": 83984.67,
+        "bollinger_20_lower": 81602.37,
+        "bollinger_percent_b": 0.329,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 43.43,
-        "atr14_price": 2045.78,
-        "atr14_pct": 2.499,
+        "rsi14_approx": 48.2,
+        "atr14_price": 2141.94,
+        "atr14_pct": 2.575,
         "confirmed_swing_highs_last4": [
           79600.0,
           87395.67,
@@ -907,275 +909,279 @@
         ],
         "latest_confirmed_swing_high": 86999.11,
         "latest_confirmed_swing_low": 80393.56,
-        "recent_range_high_20_closed_candles": 87278.54,
+        "recent_range_high_20_closed_candles": 87220.0,
         "recent_range_low_20_closed_candles": 80393.56,
         "prior_20_candle_high_excluding_latest": 87278.54,
         "prior_20_candle_low_excluding_latest": 80393.56,
         "close_breakout_state": "none",
         "swing_structure_label": "LH_LL_downtrend",
-        "last_candle_quote_volume_usdt": 1125794983.91,
-        "average_quote_volume_previous_20": 1294701395.29,
-        "volume_vs_previous_20_average": 0.87,
-        "close_location_in_candle_0_to_1": 0.038,
-        "candle_body_pct": 2.296,
+        "last_candle_quote_volume_usdt": 1230595670.84,
+        "average_quote_volume_previous_20": 1259289338.75,
+        "volume_vs_previous_20_average": 0.977,
+        "close_location_in_candle_0_to_1": 0.681,
+        "candle_body_pct": 1.611,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "4h": {
         "available": true,
         "timeframe": "4h",
-        "last_closed_candle_utc": "2026-10-13T11:59:59+00:00",
-        "last_closed_price": 83360.01,
-        "return_over_last_20_candles_pct": 0.924,
-        "return_last_1_candle_pct": -0.609,
-        "return_last_4_candles_pct": 0.601,
-        "return_last_24_candles_pct": 0.136,
-        "ema20": 83119.46,
+        "last_closed_candle_utc": "2026-10-14T03:59:59+00:00",
+        "last_closed_price": 83700.01,
+        "return_over_last_20_candles_pct": 0.74,
+        "return_last_1_candle_pct": 0.638,
+        "return_last_4_candles_pct": 0.408,
+        "return_last_24_candles_pct": 1.336,
+        "ema20": 83173.43,
         "ema50": null,
-        "rolling_vwap20_proxy": 83206.55,
-        "close_vs_rolling_vwap20_pct": 0.184,
-        "macd_12_26_line": 223.589,
-        "macd_12_26_9_histogram_approx": -88.178,
-        "bollinger_20_upper": 84213.7,
-        "bollinger_20_mid": 83208.78,
-        "bollinger_20_lower": 82203.85,
-        "bollinger_percent_b": 0.575,
+        "rolling_vwap20_proxy": 83293.31,
+        "close_vs_rolling_vwap20_pct": 0.488,
+        "macd_12_26_line": 231.035,
+        "macd_12_26_9_histogram_approx": -5.421,
+        "bollinger_20_upper": 84286.05,
+        "bollinger_20_mid": 83297.86,
+        "bollinger_20_lower": 82309.67,
+        "bollinger_percent_b": 0.703,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 53.91,
-        "atr14_price": 879.31,
-        "atr14_pct": 1.055,
+        "rsi14_approx": 50.24,
+        "atr14_price": 902.61,
+        "atr14_pct": 1.078,
         "confirmed_swing_highs_last4": [
-          83528.98,
           83173.29,
           84199.0,
-          84352.0
+          84352.0,
+          84168.0
         ],
         "confirmed_swing_lows_last4": [
-          80393.56,
           82285.71,
           82804.65,
-          81033.66
+          81033.66,
+          82972.74
         ],
-        "latest_confirmed_swing_high": 84352.0,
-        "latest_confirmed_swing_low": 81033.66,
+        "latest_confirmed_swing_high": 84168.0,
+        "latest_confirmed_swing_low": 82972.74,
         "recent_range_high_20_closed_candles": 84352.0,
         "recent_range_low_20_closed_candles": 81033.66,
         "prior_20_candle_high_excluding_latest": 84352.0,
         "prior_20_candle_low_excluding_latest": 81033.66,
         "close_breakout_state": "none",
-        "swing_structure_label": "expanding_range",
-        "last_candle_quote_volume_usdt": 266888900.86,
-        "average_quote_volume_previous_20": 140398438.84,
-        "volume_vs_previous_20_average": 1.901,
-        "close_location_in_candle_0_to_1": 0.209,
-        "candle_body_pct": 0.609,
+        "swing_structure_label": "range_or_transition",
+        "last_candle_quote_volume_usdt": 169691991.29,
+        "average_quote_volume_previous_20": 154814941.26,
+        "volume_vs_previous_20_average": 1.096,
+        "close_location_in_candle_0_to_1": 0.673,
+        "candle_body_pct": 0.638,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "1h": {
         "available": true,
         "timeframe": "1h",
-        "last_closed_candle_utc": "2026-10-13T11:59:59+00:00",
-        "last_closed_price": 83360.01,
-        "return_over_last_20_candles_pct": 0.761,
-        "return_last_1_candle_pct": 0.022,
-        "return_last_4_candles_pct": -0.609,
-        "return_last_24_candles_pct": -0.044,
-        "ema20": 83258.57,
+        "last_closed_candle_utc": "2026-10-14T05:59:59+00:00",
+        "last_closed_price": 83466.04,
+        "return_over_last_20_candles_pct": -0.189,
+        "return_last_1_candle_pct": -0.331,
+        "return_last_4_candles_pct": 0.166,
+        "return_last_24_candles_pct": -0.258,
+        "ema20": 83381.1,
         "ema50": null,
-        "rolling_vwap20_proxy": 82955.43,
-        "close_vs_rolling_vwap20_pct": 0.488,
-        "macd_12_26_line": 33.233,
-        "macd_12_26_9_histogram_approx": 132.27,
-        "bollinger_20_upper": 84270.76,
-        "bollinger_20_mid": 82942.13,
-        "bollinger_20_lower": 81613.51,
-        "bollinger_percent_b": 0.657,
+        "rolling_vwap20_proxy": 83418.11,
+        "close_vs_rolling_vwap20_pct": 0.057,
+        "macd_12_26_line": 158.017,
+        "macd_12_26_9_histogram_approx": 3.835,
+        "bollinger_20_upper": 83744.85,
+        "bollinger_20_mid": 83410.04,
+        "bollinger_20_lower": 83075.22,
+        "bollinger_percent_b": 0.584,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 59.4,
-        "atr14_price": 578.23,
-        "atr14_pct": 0.694,
+        "rsi14_approx": 50.73,
+        "atr14_price": 314.75,
+        "atr14_pct": 0.377,
         "confirmed_swing_highs_last4": [
-          84352.0,
-          83147.95,
-          84168.0
+          83739.95,
+          83850.0,
+          83709.59,
+          83958.0
         ],
         "confirmed_swing_lows_last4": [
-          83500.0,
-          82410.86,
-          82311.5,
-          81033.66
+          81033.66,
+          83122.95,
+          82972.74,
+          83136.8
         ],
-        "latest_confirmed_swing_high": 84168.0,
-        "latest_confirmed_swing_low": 81033.66,
-        "recent_range_high_20_closed_candles": 84168.0,
-        "recent_range_low_20_closed_candles": 81033.66,
-        "prior_20_candle_high_excluding_latest": 84168.0,
-        "prior_20_candle_low_excluding_latest": 81033.66,
+        "latest_confirmed_swing_high": 83958.0,
+        "latest_confirmed_swing_low": 83136.8,
+        "recent_range_high_20_closed_candles": 83958.0,
+        "recent_range_low_20_closed_candles": 82972.74,
+        "prior_20_candle_high_excluding_latest": 83958.0,
+        "prior_20_candle_low_excluding_latest": 82972.74,
         "close_breakout_state": "none",
-        "swing_structure_label": "expanding_range",
-        "last_candle_quote_volume_usdt": 66280812.98,
-        "average_quote_volume_previous_20": 51232218.86,
-        "volume_vs_previous_20_average": 1.294,
-        "close_location_in_candle_0_to_1": 0.36,
-        "candle_body_pct": 0.022,
+        "swing_structure_label": "HH_HL_uptrend",
+        "last_candle_quote_volume_usdt": 35024661.48,
+        "average_quote_volume_previous_20": 42364265.49,
+        "volume_vs_previous_20_average": 0.827,
+        "close_location_in_candle_0_to_1": 0.169,
+        "candle_body_pct": 0.331,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "15m": {
         "available": true,
         "timeframe": "15m",
-        "last_closed_candle_utc": "2026-10-13T12:44:59+00:00",
-        "last_closed_price": 83232.25,
-        "return_over_last_20_candles_pct": -0.743,
-        "return_last_1_candle_pct": -0.21,
-        "return_last_4_candles_pct": -0.39,
-        "return_last_24_candles_pct": -0.585,
-        "ema20": 83472.12,
+        "last_closed_candle_utc": "2026-10-14T06:14:59+00:00",
+        "last_closed_price": 83585.28,
+        "return_over_last_20_candles_pct": 0.297,
+        "return_last_1_candle_pct": 0.143,
+        "return_last_4_candles_pct": 0.06,
+        "return_last_24_candles_pct": 0.229,
+        "ema20": 83578.0,
         "ema50": null,
-        "rolling_vwap20_proxy": 83594.4,
-        "close_vs_rolling_vwap20_pct": -0.433,
-        "macd_12_26_line": -109.998,
-        "macd_12_26_9_histogram_approx": -8.497,
-        "bollinger_20_upper": 84023.7,
-        "bollinger_20_mid": 83541.99,
-        "bollinger_20_lower": 83060.29,
-        "bollinger_percent_b": 0.178,
+        "rolling_vwap20_proxy": 83536.25,
+        "close_vs_rolling_vwap20_pct": 0.059,
+        "macd_12_26_line": 65.719,
+        "macd_12_26_9_histogram_approx": -46.628,
+        "bollinger_20_upper": 83926.0,
+        "bollinger_20_mid": 83573.19,
+        "bollinger_20_lower": 83220.38,
+        "bollinger_percent_b": 0.517,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 40.21,
-        "atr14_price": 224.55,
-        "atr14_pct": 0.27,
+        "rsi14_approx": 57.48,
+        "atr14_price": 169.87,
+        "atr14_pct": 0.203,
         "confirmed_swing_highs_last4": [
-          83913.82,
-          83725.95,
-          83739.95
+          83709.59,
+          83454.01,
+          83958.0,
+          83880.39
         ],
         "confirmed_swing_lows_last4": [
-          83579.1,
-          83377.65,
-          83146.53
+          83172.0,
+          83224.01,
+          83618.81,
+          83436.98
         ],
-        "latest_confirmed_swing_high": 83739.95,
-        "latest_confirmed_swing_low": 83146.53,
-        "recent_range_high_20_closed_candles": 84168.0,
-        "recent_range_low_20_closed_candles": 83122.95,
-        "prior_20_candle_high_excluding_latest": 84168.0,
-        "prior_20_candle_low_excluding_latest": 83122.95,
+        "latest_confirmed_swing_high": 83880.39,
+        "latest_confirmed_swing_low": 83436.98,
+        "recent_range_high_20_closed_candles": 83958.0,
+        "recent_range_low_20_closed_candles": 83172.0,
+        "prior_20_candle_high_excluding_latest": 83958.0,
+        "prior_20_candle_low_excluding_latest": 83172.0,
         "close_breakout_state": "none",
-        "swing_structure_label": "expanding_range",
-        "last_candle_quote_volume_usdt": 11015803.75,
-        "average_quote_volume_previous_20": 17485797.08,
-        "volume_vs_previous_20_average": 0.63,
-        "close_location_in_candle_0_to_1": 0.0,
-        "candle_body_pct": 0.21,
+        "swing_structure_label": "LH_LL_downtrend",
+        "last_candle_quote_volume_usdt": 7677608.21,
+        "average_quote_volume_previous_20": 10139310.2,
+        "volume_vs_previous_20_average": 0.757,
+        "close_location_in_candle_0_to_1": 1.0,
+        "candle_body_pct": 0.143,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       },
       "5m": {
         "available": true,
         "timeframe": "5m",
-        "last_closed_candle_utc": "2026-10-13T12:44:59+00:00",
-        "last_closed_price": 83232.25,
-        "return_over_last_20_candles_pct": 0.081,
-        "return_last_1_candle_pct": -0.1,
-        "return_last_4_candles_pct": -0.112,
-        "return_last_24_candles_pct": -0.055,
-        "ema20": 83355.61,
+        "last_closed_candle_utc": "2026-10-14T06:14:59+00:00",
+        "last_closed_price": 83585.28,
+        "return_over_last_20_candles_pct": -0.285,
+        "return_last_1_candle_pct": 0.221,
+        "return_last_4_candles_pct": 0.176,
+        "return_last_24_candles_pct": -0.163,
+        "ema20": 83565.19,
         "ema50": null,
-        "rolling_vwap20_proxy": 83387.57,
-        "close_vs_rolling_vwap20_pct": -0.186,
-        "macd_12_26_line": -36.484,
-        "macd_12_26_9_histogram_approx": -8.416,
-        "bollinger_20_upper": 83650.15,
-        "bollinger_20_mid": 83369.44,
-        "bollinger_20_lower": 83088.73,
-        "bollinger_percent_b": 0.256,
+        "rolling_vwap20_proxy": 83575.07,
+        "close_vs_rolling_vwap20_pct": 0.012,
+        "macd_12_26_line": -87.118,
+        "macd_12_26_9_histogram_approx": 4.386,
+        "bollinger_20_upper": 83811.34,
+        "bollinger_20_mid": 83578.03,
+        "bollinger_20_lower": 83344.73,
+        "bollinger_percent_b": 0.516,
         "structural_break_proxy": "none",
         "structural_break_note": "BOS/CHOCH proxy only; confirm on candle close and interpret against prior trend/context.",
-        "rsi14_approx": 37.88,
-        "atr14_price": 113.51,
-        "atr14_pct": 0.136,
+        "rsi14_approx": 46.69,
+        "atr14_price": 101.35,
+        "atr14_pct": 0.121,
         "confirmed_swing_highs_last4": [
-          83739.95,
-          83481.62
+          83760.01,
+          83880.39,
+          83789.53,
+          83646.79
         ],
         "confirmed_swing_lows_last4": [
-          83250.0,
-          83146.53,
-          83216.6,
-          83122.95
+          83618.81,
+          83436.98
         ],
-        "latest_confirmed_swing_high": 83481.62,
-        "latest_confirmed_swing_low": 83122.95,
-        "recent_range_high_20_closed_candles": 83739.95,
-        "recent_range_low_20_closed_candles": 83122.95,
-        "prior_20_candle_high_excluding_latest": 83739.95,
-        "prior_20_candle_low_excluding_latest": 83122.95,
+        "latest_confirmed_swing_high": 83646.79,
+        "latest_confirmed_swing_low": 83436.98,
+        "recent_range_high_20_closed_candles": 83863.61,
+        "recent_range_low_20_closed_candles": 83351.83,
+        "prior_20_candle_high_excluding_latest": 83880.39,
+        "prior_20_candle_low_excluding_latest": 83351.83,
         "close_breakout_state": "none",
         "swing_structure_label": "LH_LL_downtrend",
-        "last_candle_quote_volume_usdt": 2784850.99,
-        "average_quote_volume_previous_20": 5074584.57,
-        "volume_vs_previous_20_average": 0.549,
-        "close_location_in_candle_0_to_1": 0.0,
-        "candle_body_pct": 0.1,
+        "last_candle_quote_volume_usdt": 2241508.06,
+        "average_quote_volume_previous_20": 2757768.98,
+        "volume_vs_previous_20_average": 0.813,
+        "close_location_in_candle_0_to_1": 1.0,
+        "candle_body_pct": 0.222,
         "indicator_limits": "EMA/RSI/ATR/MACD/Bollinger/VWAP/volume are descriptive. VWAP is rolling 20-candle proxy, not session VWAP; pivots use 2-left/2-right confirmation and lag. Structural break is a BOS/CHOCH proxy, not a full discretionary structure engine."
       }
     },
     "structure_source": "Separate closed-candle structure for Binance spot and USDⓈ-M futures; do not treat them as interchangeable.",
     "divergence_engine": {
       "24h_divergence": {
-        "price_trend": "UP",
-        "oi_trend": "UP",
-        "divergence_state": "Bullish Continuation (Long Build-up)",
-        "bias_contribution": 15
+        "price_trend": "FLAT",
+        "oi_trend": "DOWN",
+        "divergence_state": "Neutral / Ranging",
+        "bias_contribution": 0
       }
     },
     "statistical_z_scores": {
-      "oi_zscore": 1.704,
-      "funding_zscore": 1.407,
+      "oi_zscore": -2.2,
+      "funding_zscore": -0.97,
       "note": "Z-Scores using up to 500 historical observations to identify statistical anomalies (> 2.0 or < -2.0)."
     },
     "quant_bias": {
-      "composite_score": 19,
-      "bias_label": "BULLISH",
+      "composite_score": -54,
+      "bias_label": "STRONG BEARISH",
       "breakdown": {
-        "1d_vwap_trend": -15,
-        "24h_spot_cvd": 19,
-        "spot_orderbook_imbalance": 0,
-        "futures_orderbook_imbalance": 0,
-        "24h_divergence_engine": 15
+        "1d_vwap_trend": -13,
+        "24h_spot_cvd": -17,
+        "spot_orderbook_imbalance": -20,
+        "futures_orderbook_imbalance": -14,
+        "24h_divergence_engine": 0,
+        "oi_squeeze_risk": 10
       },
-      "market_regime": "BALANCED_NORMAL"
+      "market_regime": "HIGH_VOL_SQUEEZE"
     },
     "risk_model": {
-      "atr14": 899.05,
-      "buffer": 1348.57,
-      "direction": "LONG",
-      "entry_price": 83359.16,
+      "atr14": 925.39,
+      "buffer": 1388.09,
+      "direction": "SHORT",
+      "entry_price": 83527.77,
       "long": {
-        "stop_loss": 82010.59,
-        "tp1_rr2": 86056.3,
-        "tp2_rr3": 87404.87,
-        "risk_usd": 1348.57,
-        "risk_pct": 1.62
+        "stop_loss": 82139.68,
+        "tp1_rr2": 86303.95,
+        "tp2_rr3": 87692.04,
+        "risk_usd": 1388.09,
+        "risk_pct": 1.66
       },
       "short": {
-        "stop_loss": 84707.73,
-        "tp1_rr2": 80662.02,
-        "tp2_rr3": 79313.45,
-        "risk_usd": 1348.57,
-        "risk_pct": 1.62
+        "stop_loss": 84915.86,
+        "tp1_rr2": 80751.59,
+        "tp2_rr3": 79363.5,
+        "risk_usd": 1388.09,
+        "risk_pct": 1.66
       },
       "recommended": {
-        "scenario": "LONG",
-        "stop_loss": 82010.59,
-        "tp1_rr2": 86056.3,
-        "tp2_rr3": 87404.87
+        "scenario": "SHORT",
+        "stop_loss": 84915.86,
+        "tp1_rr2": 80751.59,
+        "tp2_rr3": 79363.5
       },
       "liquidity_adjusted": {
         "multiplier": 1.0,
-        "adjusted_buffer": 1348.57,
-        "long_sl": 82010.59,
-        "short_sl": 84707.73,
+        "adjusted_buffer": 1388.09,
+        "long_sl": 82139.68,
+        "short_sl": 84915.86,
         "wall_info": {
           "wall_detected": false,
           "cluster_type": null,
@@ -1184,54 +1190,54 @@
         }
       },
       "friction_analysis": {
-        "spread_usd": 8.34,
+        "spread_usd": 8.35,
         "taker_fee_pct": 0.0005,
-        "round_trip_fee_usd": 83.36,
-        "total_friction_usd": 91.7,
-        "friction_pct_of_risk": 6.8,
+        "round_trip_fee_usd": 83.53,
+        "total_friction_usd": 91.88,
+        "friction_pct_of_risk": 6.62,
         "effective_rr_tp1": 1.81,
         "effective_rr_tp2": 2.75,
         "breakeven_winrate_rr1_pct": 35.6,
         "breakeven_winrate_rr2_pct": 26.7
       },
       "friction_compensated_targets": {
-        "long_tp1": 86331.4,
-        "long_tp2": 87771.67,
-        "short_tp1": 80386.92,
-        "short_tp2": 78946.65,
-        "compensation_usd": 275.1
+        "long_tp1": 86579.59,
+        "long_tp2": 88059.56,
+        "short_tp1": 80475.95,
+        "short_tp2": 78995.98,
+        "compensation_usd": 275.64
       }
     },
     "atr_risk": {
-      "atr14": 899.05,
-      "buffer": 1348.57,
-      "direction": "LONG",
-      "entry_price": 83359.16,
+      "atr14": 925.39,
+      "buffer": 1388.09,
+      "direction": "SHORT",
+      "entry_price": 83527.77,
       "long": {
-        "stop_loss": 82010.59,
-        "tp1_rr2": 86056.3,
-        "tp2_rr3": 87404.87,
-        "risk_usd": 1348.57,
-        "risk_pct": 1.62
+        "stop_loss": 82139.68,
+        "tp1_rr2": 86303.95,
+        "tp2_rr3": 87692.04,
+        "risk_usd": 1388.09,
+        "risk_pct": 1.66
       },
       "short": {
-        "stop_loss": 84707.73,
-        "tp1_rr2": 80662.02,
-        "tp2_rr3": 79313.45,
-        "risk_usd": 1348.57,
-        "risk_pct": 1.62
+        "stop_loss": 84915.86,
+        "tp1_rr2": 80751.59,
+        "tp2_rr3": 79363.5,
+        "risk_usd": 1388.09,
+        "risk_pct": 1.66
       },
       "recommended": {
-        "scenario": "LONG",
-        "stop_loss": 82010.59,
-        "tp1_rr2": 86056.3,
-        "tp2_rr3": 87404.87
+        "scenario": "SHORT",
+        "stop_loss": 84915.86,
+        "tp1_rr2": 80751.59,
+        "tp2_rr3": 79363.5
       },
       "liquidity_adjusted": {
         "multiplier": 1.0,
-        "adjusted_buffer": 1348.57,
-        "long_sl": 82010.59,
-        "short_sl": 84707.73,
+        "adjusted_buffer": 1388.09,
+        "long_sl": 82139.68,
+        "short_sl": 84915.86,
         "wall_info": {
           "wall_detected": false,
           "cluster_type": null,
@@ -1240,168 +1246,96 @@
         }
       },
       "friction_analysis": {
-        "spread_usd": 8.34,
+        "spread_usd": 8.35,
         "taker_fee_pct": 0.0005,
-        "round_trip_fee_usd": 83.36,
-        "total_friction_usd": 91.7,
-        "friction_pct_of_risk": 6.8,
+        "round_trip_fee_usd": 83.53,
+        "total_friction_usd": 91.88,
+        "friction_pct_of_risk": 6.62,
         "effective_rr_tp1": 1.81,
         "effective_rr_tp2": 2.75,
         "breakeven_winrate_rr1_pct": 35.6,
         "breakeven_winrate_rr2_pct": 26.7
       },
       "friction_compensated_targets": {
-        "long_tp1": 86331.4,
-        "long_tp2": 87771.67,
-        "short_tp1": 80386.92,
-        "short_tp2": 78946.65,
-        "compensation_usd": 275.1
+        "long_tp1": 86579.59,
+        "long_tp2": 88059.56,
+        "short_tp1": 80475.95,
+        "short_tp2": 78995.98,
+        "compensation_usd": 275.64
       }
     },
     "onchain_metrics": {
-      "mvrv_zscore": 1.06,
+      "mvrv_zscore": 0.98,
       "mvrv_stage": "Fair Value / Early Bull",
       "mvrv_zone": "Fair Value / Early Bull",
-      "nupl": 0.377,
+      "nupl": 0.359,
       "nupl_stage": "Optimism / Anxiety",
       "nupl_zone": "Optimism / Anxiety",
-      "realized_price": 53357.38,
+      "realized_price": 53409.28,
       "status": "OK",
-      "date": "2026-10-06",
+      "date": "2026-10-07",
       "cache_status": "CACHE_HIT"
     },
     "onchain": {
-      "mvrv_zscore": 1.06,
+      "mvrv_zscore": 0.98,
       "mvrv_stage": "Fair Value / Early Bull",
       "mvrv_zone": "Fair Value / Early Bull",
-      "nupl": 0.377,
+      "nupl": 0.359,
       "nupl_stage": "Optimism / Anxiety",
       "nupl_zone": "Optimism / Anxiety",
-      "realized_price": 53357.38,
+      "realized_price": 53409.28,
       "status": "OK",
-      "date": "2026-10-06",
+      "date": "2026-10-07",
       "cache_status": "CACHE_HIT"
     },
     "deribit_dvol": {
       "status": "OK",
       "source": "Deribit BTC DVOL Index",
-      "current_dvol": 37.91,
+      "current_dvol": 38.1,
       "dvol_regime": "Низкая (Compressed Vol)",
-      "date_utc": "2026-10-13T00:00:00+00:00",
+      "date_utc": "2026-10-14T00:00:00+00:00",
       "cache_status": "CACHE_HIT"
     },
     "coinbase_orderbook": {
       "status": "OK",
       "source": "Coinbase Pro BTC-USD L2",
-      "best_bid": 83216.33,
-      "best_ask": 83216.34,
-      "mid_price": 83216.33,
-      "bid_depth_btc": 176.137,
-      "ask_depth_btc": 218.864,
-      "bid_vs_ask_ratio": 0.805,
+      "best_bid": 83459.2,
+      "best_ask": 83459.21,
+      "mid_price": 83459.21,
+      "bid_depth_btc": 252.956,
+      "ask_depth_btc": 287.624,
+      "bid_vs_ask_ratio": 0.879,
       "threshold_pct": 1.0
     },
     "cme_basis": {
       "status": "OK",
       "source": "CME Bitcoin Futures (Front Month BTC=F)",
-      "cme_last_price": 83450.0,
-      "cme_prev_close": 81950.0,
-      "basis_vs_spot_usd": 90.84,
-      "basis_vs_spot_pct": 0.109,
-      "weekend_gap_usd": -90.84,
-      "regular_market_time_utc": "2026-10-13T12:33:12+00:00"
+      "cme_last_price": 83560.0,
+      "cme_prev_close": 82470.0,
+      "basis_vs_spot_usd": 32.23,
+      "basis_vs_spot_pct": 0.039,
+      "weekend_gap_usd": -32.23,
+      "regular_market_time_utc": "2026-10-14T06:02:09+00:00"
     }
   },
   "bybit": {
     "source": "Bybit public V5 API",
-    "collected_at_utc": "2026-10-13T12:49:49+00:00",
+    "collected_at_utc": "2026-10-14T06:19:36+00:00",
     "ticker": {
-      "lastPrice": 83316.6,
-      "markPrice": 83324.81,
-      "indexPrice": 83357.19,
-      "fundingRate": 9.387e-05,
-      "openInterest": 56458.375,
-      "turnover24h": 6067106631.1851,
-      "volume24h": 73291.842,
-      "price24hPcnt": 0.005024,
-      "price24hPcnt_pct": 0.5024
+      "lastPrice": 83486.0,
+      "markPrice": 83491.53,
+      "indexPrice": 83530.2,
+      "fundingRate": 4.374e-05,
+      "openInterest": 55455.43,
+      "turnover24h": 3805260168.761,
+      "volume24h": 45575.724,
+      "price24hPcnt": -0.000846,
+      "price24hPcnt_pct": -0.0846
     },
     "open_interest_history": {
       "status": "OK",
       "unit": "Bybit-reported contract units; do not add to USD OI without conversion",
       "series": [
-        {
-          "timestamp_utc": "2026-10-12T12:00:00+00:00",
-          "open_interest": 56539.455
-        },
-        {
-          "timestamp_utc": "2026-10-12T13:00:00+00:00",
-          "open_interest": 57310.038
-        },
-        {
-          "timestamp_utc": "2026-10-12T14:00:00+00:00",
-          "open_interest": 57724.435
-        },
-        {
-          "timestamp_utc": "2026-10-12T15:00:00+00:00",
-          "open_interest": 58406.156
-        },
-        {
-          "timestamp_utc": "2026-10-12T16:00:00+00:00",
-          "open_interest": 58492.047
-        },
-        {
-          "timestamp_utc": "2026-10-12T17:00:00+00:00",
-          "open_interest": 58396.032
-        },
-        {
-          "timestamp_utc": "2026-10-12T18:00:00+00:00",
-          "open_interest": 58600.588
-        },
-        {
-          "timestamp_utc": "2026-10-12T19:00:00+00:00",
-          "open_interest": 58065.822
-        },
-        {
-          "timestamp_utc": "2026-10-12T20:00:00+00:00",
-          "open_interest": 57499.472
-        },
-        {
-          "timestamp_utc": "2026-10-12T21:00:00+00:00",
-          "open_interest": 57240.379
-        },
-        {
-          "timestamp_utc": "2026-10-12T22:00:00+00:00",
-          "open_interest": 56919.786
-        },
-        {
-          "timestamp_utc": "2026-10-12T23:00:00+00:00",
-          "open_interest": 56432.007
-        },
-        {
-          "timestamp_utc": "2026-10-13T00:00:00+00:00",
-          "open_interest": 55630.913
-        },
-        {
-          "timestamp_utc": "2026-10-13T01:00:00+00:00",
-          "open_interest": 55280.574
-        },
-        {
-          "timestamp_utc": "2026-10-13T02:00:00+00:00",
-          "open_interest": 55184.441
-        },
-        {
-          "timestamp_utc": "2026-10-13T03:00:00+00:00",
-          "open_interest": 54594.47
-        },
-        {
-          "timestamp_utc": "2026-10-13T04:00:00+00:00",
-          "open_interest": 54120.101
-        },
-        {
-          "timestamp_utc": "2026-10-13T05:00:00+00:00",
-          "open_interest": 54420.413
-        },
         {
           "timestamp_utc": "2026-10-13T06:00:00+00:00",
           "open_interest": 54499.861
@@ -1429,48 +1363,128 @@
         {
           "timestamp_utc": "2026-10-13T12:00:00+00:00",
           "open_interest": 56354.129
+        },
+        {
+          "timestamp_utc": "2026-10-13T13:00:00+00:00",
+          "open_interest": 56493.99
+        },
+        {
+          "timestamp_utc": "2026-10-13T14:00:00+00:00",
+          "open_interest": 56560.587
+        },
+        {
+          "timestamp_utc": "2026-10-13T15:00:00+00:00",
+          "open_interest": 56500.888
+        },
+        {
+          "timestamp_utc": "2026-10-13T16:00:00+00:00",
+          "open_interest": 56201.021
+        },
+        {
+          "timestamp_utc": "2026-10-13T17:00:00+00:00",
+          "open_interest": 56168.057
+        },
+        {
+          "timestamp_utc": "2026-10-13T18:00:00+00:00",
+          "open_interest": 56215.68
+        },
+        {
+          "timestamp_utc": "2026-10-13T19:00:00+00:00",
+          "open_interest": 56248.521
+        },
+        {
+          "timestamp_utc": "2026-10-13T20:00:00+00:00",
+          "open_interest": 56206.625
+        },
+        {
+          "timestamp_utc": "2026-10-13T21:00:00+00:00",
+          "open_interest": 56096.597
+        },
+        {
+          "timestamp_utc": "2026-10-13T22:00:00+00:00",
+          "open_interest": 55994.695
+        },
+        {
+          "timestamp_utc": "2026-10-13T23:00:00+00:00",
+          "open_interest": 56032.443
+        },
+        {
+          "timestamp_utc": "2026-10-14T00:00:00+00:00",
+          "open_interest": 56177.505
+        },
+        {
+          "timestamp_utc": "2026-10-14T01:00:00+00:00",
+          "open_interest": 56243.011
+        },
+        {
+          "timestamp_utc": "2026-10-14T02:00:00+00:00",
+          "open_interest": 56121.943
+        },
+        {
+          "timestamp_utc": "2026-10-14T03:00:00+00:00",
+          "open_interest": 56245.619
+        },
+        {
+          "timestamp_utc": "2026-10-14T04:00:00+00:00",
+          "open_interest": 55835.405
+        },
+        {
+          "timestamp_utc": "2026-10-14T05:00:00+00:00",
+          "open_interest": 55848.929
+        },
+        {
+          "timestamp_utc": "2026-10-14T06:00:00+00:00",
+          "open_interest": 55544.069
         }
       ],
       "changes": {
         "1h": {
           "available": true,
           "from": {
-            "timestamp_utc": "2026-10-13T11:00:00+00:00",
-            "open_interest": 56584.517
+            "timestamp_utc": "2026-10-14T05:00:00+00:00",
+            "open_interest": 55848.929
           },
           "to": {
-            "timestamp_utc": "2026-10-13T12:00:00+00:00",
-            "open_interest": 56354.129
+            "timestamp_utc": "2026-10-14T06:00:00+00:00",
+            "open_interest": 55544.069
           },
-          "change_pct": -0.407
+          "change_pct": -0.546
         },
         "4h": {
           "available": true,
           "from": {
-            "timestamp_utc": "2026-10-13T08:00:00+00:00",
-            "open_interest": 55463.024
+            "timestamp_utc": "2026-10-14T02:00:00+00:00",
+            "open_interest": 56121.943
           },
           "to": {
-            "timestamp_utc": "2026-10-13T12:00:00+00:00",
-            "open_interest": 56354.129
+            "timestamp_utc": "2026-10-14T06:00:00+00:00",
+            "open_interest": 55544.069
           },
-          "change_pct": 1.607
+          "change_pct": -1.03
         },
         "24h": {
           "available": true,
           "from": {
-            "timestamp_utc": "2026-10-12T12:00:00+00:00",
-            "open_interest": 56539.455
+            "timestamp_utc": "2026-10-13T06:00:00+00:00",
+            "open_interest": 54499.861
           },
           "to": {
-            "timestamp_utc": "2026-10-13T12:00:00+00:00",
-            "open_interest": 56354.129
+            "timestamp_utc": "2026-10-14T06:00:00+00:00",
+            "open_interest": 55544.069
           },
-          "change_pct": -0.328
+          "change_pct": 1.916
         }
       }
     },
     "funding_history": [
+      {
+        "funding_rate_pct": -0.00213,
+        "funding_time_utc": "2026-10-14T00:00:00+00:00"
+      },
+      {
+        "funding_rate_pct": 0.00516,
+        "funding_time_utc": "2026-10-13T16:00:00+00:00"
+      },
       {
         "funding_rate_pct": 0.00562,
         "funding_time_utc": "2026-10-13T08:00:00+00:00"
@@ -1494,17 +1508,99 @@
       {
         "funding_rate_pct": 0.00159,
         "funding_time_utc": "2026-10-11T16:00:00+00:00"
-      },
-      {
-        "funding_rate_pct": -0.00033,
-        "funding_time_utc": "2026-10-11T08:00:00+00:00"
-      },
-      {
-        "funding_rate_pct": -0.00094,
-        "funding_time_utc": "2026-10-11T00:00:00+00:00"
       }
     ],
     "account_long_short_ratio": [
+      {
+        "timestamp": "1791957600000",
+        "buy_ratio": 0.6049,
+        "sell_ratio": 0.3951
+      },
+      {
+        "timestamp": "1791954000000",
+        "buy_ratio": 0.605,
+        "sell_ratio": 0.395
+      },
+      {
+        "timestamp": "1791950400000",
+        "buy_ratio": 0.6059,
+        "sell_ratio": 0.3941
+      },
+      {
+        "timestamp": "1791946800000",
+        "buy_ratio": 0.6047,
+        "sell_ratio": 0.3953
+      },
+      {
+        "timestamp": "1791943200000",
+        "buy_ratio": 0.6036,
+        "sell_ratio": 0.3964
+      },
+      {
+        "timestamp": "1791939600000",
+        "buy_ratio": 0.6042,
+        "sell_ratio": 0.3958
+      },
+      {
+        "timestamp": "1791936000000",
+        "buy_ratio": 0.6018,
+        "sell_ratio": 0.3982
+      },
+      {
+        "timestamp": "1791932400000",
+        "buy_ratio": 0.602,
+        "sell_ratio": 0.398
+      },
+      {
+        "timestamp": "1791928800000",
+        "buy_ratio": 0.601,
+        "sell_ratio": 0.399
+      },
+      {
+        "timestamp": "1791925200000",
+        "buy_ratio": 0.5997,
+        "sell_ratio": 0.4003
+      },
+      {
+        "timestamp": "1791921600000",
+        "buy_ratio": 0.5982,
+        "sell_ratio": 0.4018
+      },
+      {
+        "timestamp": "1791918000000",
+        "buy_ratio": 0.5947,
+        "sell_ratio": 0.4053
+      },
+      {
+        "timestamp": "1791914400000",
+        "buy_ratio": 0.5905,
+        "sell_ratio": 0.4095
+      },
+      {
+        "timestamp": "1791910800000",
+        "buy_ratio": 0.5971,
+        "sell_ratio": 0.4029
+      },
+      {
+        "timestamp": "1791907200000",
+        "buy_ratio": 0.5969,
+        "sell_ratio": 0.4031
+      },
+      {
+        "timestamp": "1791903600000",
+        "buy_ratio": 0.5985,
+        "sell_ratio": 0.4015
+      },
+      {
+        "timestamp": "1791900000000",
+        "buy_ratio": 0.5966,
+        "sell_ratio": 0.4034
+      },
+      {
+        "timestamp": "1791896400000",
+        "buy_ratio": 0.5923,
+        "sell_ratio": 0.4077
+      },
       {
         "timestamp": "1791892800000",
         "buy_ratio": 0.5901,
@@ -1534,104 +1630,14 @@
         "timestamp": "1791874800000",
         "buy_ratio": 0.6087,
         "sell_ratio": 0.3913
-      },
-      {
-        "timestamp": "1791871200000",
-        "buy_ratio": 0.6115,
-        "sell_ratio": 0.3885
-      },
-      {
-        "timestamp": "1791867600000",
-        "buy_ratio": 0.6147,
-        "sell_ratio": 0.3853
-      },
-      {
-        "timestamp": "1791864000000",
-        "buy_ratio": 0.6159,
-        "sell_ratio": 0.3841
-      },
-      {
-        "timestamp": "1791860400000",
-        "buy_ratio": 0.6154,
-        "sell_ratio": 0.3846
-      },
-      {
-        "timestamp": "1791856800000",
-        "buy_ratio": 0.6168,
-        "sell_ratio": 0.3832
-      },
-      {
-        "timestamp": "1791853200000",
-        "buy_ratio": 0.6124,
-        "sell_ratio": 0.3876
-      },
-      {
-        "timestamp": "1791849600000",
-        "buy_ratio": 0.6137,
-        "sell_ratio": 0.3863
-      },
-      {
-        "timestamp": "1791846000000",
-        "buy_ratio": 0.6098,
-        "sell_ratio": 0.3902
-      },
-      {
-        "timestamp": "1791842400000",
-        "buy_ratio": 0.6107,
-        "sell_ratio": 0.3893
-      },
-      {
-        "timestamp": "1791838800000",
-        "buy_ratio": 0.6133,
-        "sell_ratio": 0.3867
-      },
-      {
-        "timestamp": "1791835200000",
-        "buy_ratio": 0.6106,
-        "sell_ratio": 0.3894
-      },
-      {
-        "timestamp": "1791831600000",
-        "buy_ratio": 0.6075,
-        "sell_ratio": 0.3925
-      },
-      {
-        "timestamp": "1791828000000",
-        "buy_ratio": 0.6072,
-        "sell_ratio": 0.3928
-      },
-      {
-        "timestamp": "1791824400000",
-        "buy_ratio": 0.6068,
-        "sell_ratio": 0.3932
-      },
-      {
-        "timestamp": "1791820800000",
-        "buy_ratio": 0.6085,
-        "sell_ratio": 0.3915
-      },
-      {
-        "timestamp": "1791817200000",
-        "buy_ratio": 0.6065,
-        "sell_ratio": 0.3935
-      },
-      {
-        "timestamp": "1791813600000",
-        "buy_ratio": 0.6109,
-        "sell_ratio": 0.3891
-      },
-      {
-        "timestamp": "1791810000000",
-        "buy_ratio": 0.6075,
-        "sell_ratio": 0.3925
       }
     ],
     "orderbook_snapshot": {
       "status": "OK",
-      "timestamp_ms": 1791895791959,
-      "bid_notional_usd_top50": 2648118.34,
-      "ask_notional_usd_top50": 1370974.59,
-      "bid_ask_notional_ratio": 1.9316,
+      "timestamp_ms": 1791958778761,
+      "bid_notional_usd_top50": 793067.6,
+      "ask_notional_usd_top50": 3640276.52,
+      "bid_ask_notional_ratio": 0.2179,
       "warning": "Single snapshot; not a predictive signal and can be spoofed/cancelled."
     },
     "status": "OK",
@@ -1639,8 +1645,8 @@
   },
   "quant_bias_calibration": {
     "tracker_file": "quant_calibration_tracker.json",
-    "total_signals_tracked": 4,
-    "pending_signals": 2,
+    "total_signals_tracked": 5,
+    "pending_signals": 3,
     "resolved_signals_count": 2,
     "newly_resolved_in_this_run": 0,
     "new_signal_logged_this_run": false,
@@ -1673,8 +1679,8 @@
     "kelly_fraction": 0.0,
     "half_kelly_fraction": 0.0,
     "advanced_performance_metrics": {
-      "total_signals_tracked": 4,
-      "pending_signals": 2,
+      "total_signals_tracked": 5,
+      "pending_signals": 3,
       "resolved_signals_count": 2,
       "status": "ACTIVE_CALIBRATION",
       "win_rate_pct": 0.0,
@@ -1716,5 +1722,5 @@
     },
     "readout": "Винрейт скоринга: 0.0% (0W / 2L из 2 сигналов). Мат. ожидание (EV): -0.97% / trade. Бычьи сигналы: N/A% WR. Медвежьи сигналы: 0.0% WR."
   },
-  "run_finished_at_utc": "2026-10-13T12:49:53+00:00"
+  "run_finished_at_utc": "2026-10-14T06:19:39+00:00"
 }

@@ -102,5 +102,30 @@
     "is_win": null,
     "outcome": null,
     "actual_elapsed_hours": null
+  },
+  {
+    "id": "2026-10-14T06:12:19+00:00",
+    "epoch": 1791958339.5175068,
+    "timestamp_utc": "2026-10-14T06:12:19+00:00",
+    "direction": "NEUTRAL",
+    "entry_price": 83466.01,
+    "spot_price": 83466.01,
+    "quant_bias_score": -4,
+    "quant_bias_label": "NEUTRAL",
+    "divergence_state": "Bullish Reversal Weakness (Long Liquidation)",
+    "oi_zscore": -2.098,
+    "atr14_4h": 925.39,
+    "stop_loss": 84854.1,
+    "tp1_rr2": 80689.83,
+    "tp2_rr3": 79301.74,
+    "resolved": false,
+    "resolution_type": "PENDING",
+    "resolved_at_utc": null,
+    "resolved_price": null,
+    "pnl_pct": null,
+    "pnl_usd": null,
+    "is_win": null,
+    "outcome": null,
+    "actual_elapsed_hours": null
   }
 ]
