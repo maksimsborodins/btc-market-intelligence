@@ -3020,6 +3020,54 @@ SYSTEM_INSTRUCTION = """
 """
 
 
+def log_gemini_usage_to_lifeos_db(
+    model_name: str,
+    prompt_tokens: int,
+    candidates_tokens: int,
+    total_tokens: int,
+    summary: str = "BTC Market Intelligence — Синтез рыночного брифа",
+) -> None:
+    """Фиксирует расход токенов Gemini в единой базе Second Brain (LifeOS DB) для сквозного учета квот."""
+    db_path = os.getenv("LIFEOS_DB_PATH", r"C:\LifeOS\lifeos.db").strip()
+    if not db_path or not os.path.exists(db_path):
+        return
+    try:
+        import sqlite3
+        import uuid
+
+        op_id = str(uuid.uuid4())
+        created_at = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(db_path, timeout=5.0) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
+            conn.execute(
+                """
+                INSERT INTO operations (
+                    id, created_at, telegram_message_id, summary,
+                    drive_file_id, calendar_event_id, sheet_rows_json,
+                    status, prompt_tokens, candidates_tokens, total_tokens, model_used
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    op_id,
+                    created_at,
+                    None,
+                    summary,
+                    None,
+                    None,
+                    "[]",
+                    "active",
+                    prompt_tokens,
+                    candidates_tokens,
+                    total_tokens,
+                    model_name,
+                ),
+            )
+            conn.commit()
+    except Exception as exc:
+        print(f"[!] Предупреждение: не удалось зафиксировать токены в LifeOS DB: {exc}")
+
+
 def run_gemini_synthesis(payload: dict, screenshots: list[dict], model_override: Optional[str] = None) -> str:
     global genai, types
     api_key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
@@ -3076,7 +3124,23 @@ def run_gemini_synthesis(payload: dict, screenshots: list[dict], model_override:
                 )
                 text = getattr(response, "text", None)
                 if text and text.strip():
+                    usage = getattr(response, "usage_metadata", None)
+                    prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
+                    candidates_tokens = getattr(usage, "candidates_token_count", 0) or 0
+                    total_tokens = getattr(usage, "total_token_count", 0) or (prompt_tokens + candidates_tokens)
+
+                    log_gemini_usage_to_lifeos_db(
+                        model_name=model_name,
+                        prompt_tokens=prompt_tokens,
+                        candidates_tokens=candidates_tokens,
+                        total_tokens=total_tokens,
+                        summary="BTC Market Intelligence — Синтез рыночного брифа",
+                    )
+
                     payload["ai_telemetry"] = get_ai_telemetry(last_status="ONLINE", used_model=model_name)
+                    payload["ai_telemetry"]["prompt_tokens"] = prompt_tokens
+                    payload["ai_telemetry"]["candidates_tokens"] = candidates_tokens
+                    payload["ai_telemetry"]["total_tokens"] = total_tokens
                     return text.strip()
                 raise RuntimeError(f"Модель {model_name} вернула пустой ответ.")
             except Exception as exc:
