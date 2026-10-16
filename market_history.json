@@ -5964,5 +5964,19 @@
     "oi_zscore": -2.302,
     "funding_zscore": -0.26,
     "divergence_state": "Bullish Reversal Weakness (Long Liquidation)"
+  },
+  {
+    "epoch": 1792147390.7739117,
+    "timestamp_utc": "2026-10-16T10:43:10+00:00",
+    "symbol": "BTCUSDT",
+    "spot_price": 82272.29,
+    "futures_price": 82237.2,
+    "open_interest_btc": 94073.56,
+    "funding_pct": 0.0041,
+    "quant_bias_score": -22,
+    "quant_bias_label": "BEARISH",
+    "oi_zscore": 0.82,
+    "funding_zscore": 0.493,
+    "divergence_state": "Bullish Continuation (Long Build-up)"
   }
 ]
