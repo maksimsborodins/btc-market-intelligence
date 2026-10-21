@@ -1,4 +1,4 @@
-"""The user's manual strategies as mechanical rules, simulated on Binance BTCUSDT perp bars.
+﻿"""The user's manual strategies as mechanical rules, simulated on Binance BTCUSDT perp bars.
 
 Every trade risks RISK_USD: size = RISK_USD / |entry - stop|. Costs follow BingX perps: stop and market orders pay the
 taker fee plus slippage, take-profit limits pay the maker fee, funding is charged for the time held. Trades are walked
@@ -95,9 +95,12 @@ def _funding_paid(side: int, notional: float, start_ms: int, end_ms: int) -> flo
 
 
 def simulate(b15: pd.DataFrame, trade: Trade, entry_taker: bool, targets: list[tuple[float, float]],
-             be_after_first: bool, trail: list[tuple[int, float]] | None, max_hold_h: int) -> Trade:
+             be_after_first: bool, trail: list[tuple[int, float]] | None, max_hold_h: int,
+             exit_at: tuple[int, float] | None = None) -> Trade:
     """Walk 15m bars from the entry bar. targets: (price, fraction of the position); the rest exits at the stop,
     on a trail update or at max hold. trail: (time known, new stop) sorted by time; a stop only moves in favour.
+    exit_at: (time, price) of a market exit decided at that time (an hourly close); it fires at the start of the
+    first 15m bar at or after that time, before anything in that bar, and pays taker + slippage.
     Funding is charged on the full position for the whole hold (slightly conservative after partial exits)."""
     side, entry = trade.side, trade.entry
     size = RISK_USD / abs(entry - trade.stop)
@@ -115,6 +118,12 @@ def simulate(b15: pd.DataFrame, trade: Trade, entry_taker: bool, targets: list[t
         if np.isnan(o[j]):
             j += 1
             continue
+        if exit_at is not None and ts[j] >= exit_at[0]:
+            px, reason, last_ts = exit_at[1], "teeth", exit_at[0] - M15
+            gross += left * size * side * (px - entry)
+            fees += left * size * px * (TAKER + SLIPPAGE)
+            left = 0.0
+            break
         while trail and ti < len(trail) and trail[ti][0] <= ts[j]:
             new = trail[ti][1]
             if side * (new - stop) > 0:
@@ -238,10 +247,73 @@ def fractal_trail(known: np.ndarray, levels: np.ndarray, side: int, after_ms: in
     return list(zip(known[a:z].tolist(), (levels[a:z] * (1 - side * STOP_BUFFER)).tolist()))
 
 
+def retest_fill(b15: pd.DataFrame, from_ts: int, level: float, side: int, stop: float,
+                retest_h: int) -> tuple[int | None, int]:
+    """A limit order at `level` placed at from_ts, alive for retest_h hours. Fills on the first 15m bar that trades
+    strictly through the level (long: low < level; short: high > level), so merely touching it is not a fill.
+    If the stop is touched first (or in the same bar) the order is cancelled. Returns (fill bar time or None,
+    time the order ceased to exist)."""
+    t = b15.index.to_numpy()
+    a = int(np.searchsorted(t, from_ts))
+    z = int(np.searchsorted(t, from_ts + retest_h * HOUR_MS))
+    low, high = b15["low"].to_numpy()[a:z], b15["high"].to_numpy()[a:z]
+    adverse = low if side > 0 else high
+    fill = np.flatnonzero(side * (adverse - level) < 0)
+    stopped = np.flatnonzero(side * (adverse - stop) <= 0)
+    f = int(fill[0]) if len(fill) else None
+    s = int(stopped[0]) if len(stopped) else None
+    if s is not None and (f is None or s <= f):
+        return None, int(t[a + s] + M15)
+    if f is not None:
+        return int(t[a + f]), int(t[a + f])
+    return None, from_ts + retest_h * HOUR_MS
+
+
+def state_4h(b15: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """4h Alligator mouth per completed 4h bar: +1 lips > teeth > jaw, -1 the reverse, else 0. known = bar close."""
+    b4 = resample(b15, 240).dropna()
+    al = alligator(b4)
+    lips, teeth, jaw = (al[k].to_numpy() for k in ("lips", "teeth", "jaw"))
+    state = np.where((lips > teeth) & (teeth > jaw), 1, np.where((lips < teeth) & (teeth < jaw), -1, 0))
+    return b4.index.to_numpy() + 4 * HOUR_MS, state
+
+
+def state_4h_at(known: np.ndarray, state: np.ndarray, now: int) -> int:
+    """Mouth state on the last 4h bar completed at or before `now`."""
+    i = int(np.searchsorted(known, now, side="right")) - 1
+    return int(state[i]) if i >= 0 else 0
+
+
+def teeth_exit(b1: pd.DataFrame, teeth: np.ndarray, side: int, after_ms: int) -> tuple[int, float] | None:
+    """First hourly close beyond the teeth against the position, among hours that close after `after_ms`:
+    (close time, close price), or None."""
+    close = b1["close"].to_numpy()
+    ctime = b1.index.to_numpy() + HOUR_MS
+    a = int(np.searchsorted(ctime, after_ms, side="right"))
+    hit = np.flatnonzero(side * (close[a:] - teeth[a:]) < 0)
+    return (int(ctime[a + hit[0]]), float(close[a + hit[0]])) if len(hit) else None
+
+
+def range_tag(forecast: pd.DataFrame | None, now: int) -> dict:
+    """Colour and 24 h forecast available at hourly close `now` ("none" when there is no forecast for that hour)."""
+    if forecast is None or now not in forecast.index:
+        return {"range_color": "none", "range_pred_24h_pct": np.nan}
+    row = forecast.loc[now]
+    return {"range_color": str(row["color"]), "range_pred_24h_pct": float(row["pred_24h_pct"])}
+
+
 def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool = False, min_stop: float = MIN_STOP,
-             max_hold_h: int = 14 * 24) -> list[Trade]:
+             max_hold_h: int = 14 * 24, entry: str = "stop", retest_h: int = 4, filter_4h: bool = False,
+             forecast: pd.DataFrame | None = None, log: list | None = None,
+             only_colors: set | None = None) -> list[Trade]:
     """widening_only: enter only when the mouth is open in the trade's direction and opening further (the user's
-    "no trading in a range" rule). min_stop: skip trades whose stop is closer than this."""
+    "no trading in a range" rule). min_stop: skip trades whose stop is closer than this.
+    entry "limit_retest": instead of the stop-market entry, a limit at the fractal level for retest_h hours after the
+    breach (fills only when price trades strictly through it; maker fee, no slippage). filter_4h: trade only with
+    the 4h Alligator mouth open in the trade's direction. exit_rule "teeth": exit at the first hourly close beyond
+    the 1h teeth (no fractal trail). forecast: range forecast table (index decision time, columns color,
+    pred_24h_pct) whose values are tagged on each trade; only_colors trades only when its colour is in the set.
+    log: collects one dict per limit-order attempt."""
     b = resample(b15, 60).dropna()
     al = alligator(b)
     up, dn = fractals(b)
@@ -260,7 +332,8 @@ def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool =
     all_dn = (known[dn_i], l[dn_i])
     up_known = np.array([u[0] for u in up_beyond])
     dn_known = np.array([d[0] for d in dn_beyond])
-    targets_def, be, use_trail = OLIGATOR_EXITS[exit_rule]
+    targets_def, be, use_trail = OLIGATOR_EXITS[exit_rule] if exit_rule != "teeth" else ([], False, False)
+    st_known, st_state = state_4h(b15) if filter_4h else (None, None)
 
     trades: list[Trade] = []
     t15 = b15.index.to_numpy()
@@ -298,7 +371,12 @@ def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool =
         side_name, j = hit
         side = 1 if side_name == "long" else -1
         level = trig_long[1] if side > 0 else trig_short[1]
-        entry = max(level, o15[j]) if side > 0 else min(level, o15[j])
+        if filter_4h and state_4h_at(st_known, st_state, now) != side:
+            continue
+        if only_colors is not None and range_tag(forecast, now)["range_color"] not in only_colors:
+            continue
+        limit = entry == "limit_retest"
+        entry_px = level if limit else (max(level, o15[j]) if side > 0 else min(level, o15[j]))
         # stop: latest confirmed fractal on the other side of the jaw
         other = dn_beyond if side > 0 else up_beyond
         other_known = dn_known if side > 0 else up_known
@@ -306,24 +384,36 @@ def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool =
         if io < 0:
             continue
         stop = other[io][1] * (1 - side * STOP_BUFFER)
-        if side * (entry - stop) <= 0 or abs(entry - stop) / entry < min_stop:
+        if side * (entry_px - stop) <= 0 or abs(entry_px - stop) / entry_px < min_stop:
             continue
         mouth = side * (lips[bi] - teeth[bi]) > 0 and side * (teeth[bi] - jaw[bi]) > 0
         spread = side * (lips[bi] - jaw[bi])
         widening = mouth and bi >= 3 and spread > side * (lips[bi - 3] - jaw[bi - 3])
         if widening_only and not widening:
             continue
+        entry_ts = int(t15[j])
+        if limit:   # the slot is busy while the order is pending
+            fill_ts, done_ts = retest_fill(b15, entry_ts + M15, float(level), side, float(stop), retest_h)
+            if log is not None:
+                log.append({"trigger_ts": entry_ts, "side": side, "filled": fill_ts is not None})
+            if fill_ts is None:
+                free_at = done_ts
+                continue
+            entry_ts = fill_ts
         # previous trend: side of the mouth 24 h ago; a signal against it is a "first signal after a trend"
         prev = np.sign(lips[bi - 24] - jaw[bi - 24]) if bi >= 24 else 0
-        t = Trade("oligator_" + exit_rule, side, int(t15[j]), float(entry), float(stop),
-                  tags={"mouth_open": bool(mouth), "widening": bool(widening),
-                        "against_prev_trend": bool(prev != 0 and prev != side),
-                        "session": riga_session(int(t15[j]))})
-        trail = None
+        tags = {"mouth_open": bool(mouth), "widening": bool(widening),
+                "against_prev_trend": bool(prev != 0 and prev != side), "session": riga_session(entry_ts)}
+        if forecast is not None:
+            tags.update(range_tag(forecast, now))
+        t = Trade("oligator_" + exit_rule, side, entry_ts, float(entry_px), float(stop), tags=tags)
+        trail, exit_at = None, None
         if use_trail:   # any new opposite fractal, beyond the jaw or not
             trail = fractal_trail(*(all_dn if side > 0 else all_up), side, now, max_hold_h)
-        targets = [(entry * (1 + side * pct), frac) for pct, frac in targets_def]
-        trades.append(simulate(b15, t, True, targets, be, trail, max_hold_h))
+        if exit_rule == "teeth":
+            exit_at = teeth_exit(b, teeth, side, entry_ts)
+        targets = [(entry_px * (1 + side * pct), frac) for pct, frac in targets_def]
+        trades.append(simulate(b15, t, not limit, targets, be, trail, max_hold_h, exit_at))
         free_at = trades[-1].exit_ts
     return trades
 
