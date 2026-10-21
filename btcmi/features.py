@@ -36,13 +36,16 @@ SERIES_STALENESS_H = {
 
 
 def _hourly_bars(conn, venue: str, symbol: str, start_ms=None, end_ms=None) -> pd.DataFrame:
-    """Hourly bars re-indexed by their close time T (= ts + 1h)."""
+    """Hourly bars re-indexed by their close time T (= ts + 1h) on a gapless hourly grid: a missing bar is a NaN
+    row, so shift(k) and rolling(k) always mean k hours, never k stored rows."""
     bars = read_bars(conn, venue, symbol, "1h", start_ms, end_ms)
     if bars.empty:
         return bars
     bars = bars.copy()
     bars["T"] = bars["ts"].astype("int64") + HOUR_MS
-    return bars.set_index("T").drop(columns=["ts"])
+    bars = bars.set_index("T").drop(columns=["ts"])
+    grid = pd.Index(np.arange(bars.index.min(), bars.index.max() + HOUR_MS, HOUR_MS, dtype="int64"), name="T")
+    return bars.reindex(grid)
 
 
 def asof_series(conn, metric: str, grid: pd.Index, start_ms=None, end_ms=None) -> pd.Series:
@@ -127,7 +130,8 @@ def build_picture(conn, start_ms: int | None = None, end_ms: int | None = None) 
         pq = perp["quote_volume"].rolling(w).sum()
         df[f"spot_share_{w}h"] = sq / (sq + pq)
         total_q = sq + pq
-        df[f"vol_ratio_{w}h"] = total_q / total_q.shift(w).rolling(ZSCORE_LOOKBACK_H // w, min_periods=10).mean()
+        # rows are hours: the norm is the mean w-hour volume over the previous 30 days
+        df[f"vol_ratio_{w}h"] = total_q / total_q.shift(w).rolling(ZSCORE_LOOKBACK_H, min_periods=ZSCORE_LOOKBACK_H // 2).mean()
         df[f"premium_chg_{w}h"] = df["premium"] - df["premium"].shift(w)
         df[f"cb_premium_avg_{w}h"] = df["cb_premium"].rolling(w).mean()
         for col in (f"oi_chg_{w}h", f"spot_delta_{w}h", f"perp_delta_{w}h", f"delta_diff_{w}h", f"premium_chg_{w}h"):
@@ -157,9 +161,9 @@ def add_states(df: pd.DataFrame) -> pd.DataFrame:
 
         driver = pd.Series(None, index=df.index, dtype="object")
         driver[(p == 1) & spot_buy & spot_leads] = "rise_spot_led"
-        driver[(p == 1) & ~spot_buy] = "rise_perp_led"        # price up while spot takers are net sellers
+        driver[(p == 1) & ~spot_buy] = "rise_spot_selling"    # price up while spot takers are net sellers
         driver[(p == -1) & ~spot_buy & ~spot_leads] = "drop_spot_led"
-        driver[(p == -1) & spot_buy] = "drop_perp_led"        # price down while spot takers are net buyers
+        driver[(p == -1) & spot_buy] = "drop_spot_buying"     # price down while spot takers are net buyers
         driver[(p == 1) & spot_buy & ~spot_leads] = "rise_mixed"
         driver[(p == -1) & ~spot_buy & spot_leads] = "drop_mixed"
         driver[p == 0] = "flat"

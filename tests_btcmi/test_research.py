@@ -10,7 +10,7 @@ import pandas as pd
 from btcmi import db
 from btcmi.features import HOUR_MS, add_targets, asof_series, build_picture, FEATURE_COLUMNS
 from btcmi.research import (
-    block_bootstrap_ic, block_bootstrap_mean, run_research, us_session_mask, walk_forward_quintiles,
+    block_bootstrap_ic, block_bootstrap_mean, evaluate_states, run_research, us_session_mask, walk_forward_quintiles,
 )
 
 START = 1_700_000_000_000 // HOUR_MS * HOUR_MS  # 2023-11-14, hour aligned
@@ -104,7 +104,21 @@ class TestPointInTime(TempDb):
         last = df.iloc[-1]
         self.assertEqual(last["combo_4h"], "rise_on_leverage")
         self.assertEqual(last["oi_state_4h"], "long_buildup")
-        self.assertEqual(last["driver_4h"], "rise_perp_led")
+        self.assertEqual(last["driver_4h"], "rise_spot_selling")
+
+    def test_missing_bar_keeps_hour_arithmetic(self):
+        # a 3-hour exchange outage: ret_24h and fwd_24h must still span 24 real hours, not 24 stored rows
+        n = self.fill(n=24 * 40)
+        gap = START + 500 * HOUR_MS
+        self.conn.execute("DELETE FROM bars WHERE venue = 'binance_spot' AND ts BETWEEN ? AND ?", (gap, gap + 2 * HOUR_MS))
+        self.conn.commit()
+        df = add_targets(build_picture(self.conn))
+        self.assertEqual(len(df), n)
+        T = START + 520 * HOUR_MS
+        self.assertAlmostEqual(df.loc[T, "ret_24h"], np.log(df.loc[T, "close"] / df.loc[T - 24 * HOUR_MS, "close"]))
+        T0 = START + 480 * HOUR_MS
+        self.assertAlmostEqual(df.loc[T0, "fwd_24h"], np.log(df.loc[T0 + 24 * HOUR_MS, "close"] / df.loc[T0, "close"]))
+        self.assertTrue(np.isnan(df.loc[gap + HOUR_MS, "close"]))
 
     def test_missing_flow_gives_no_state(self):
         self.fill(n=24 * 40)
@@ -152,6 +166,24 @@ class TestStatistics(unittest.TestCase):
         self.assertGreater(pnl_before, 0)
         self.assertLess(pnl_after, 0)
         self.assertTrue(pos[: 24 * 170].isna().all())  # no positions before the minimum training period
+
+    def test_state_is_compared_with_the_whole_market(self):
+        # a sparse state with no effect on a rising market: its base must be every hour, not only state hours
+        hours = 24 * 400
+        idx = pd.Index([START + k * HOUR_MS for k in range(hours)])
+        rng = np.random.default_rng(4)
+        y = rng.normal(0.001, 0.01, hours)
+        state = np.full(hours, None, dtype=object)
+        on = rng.random(hours) < 0.05
+        state[on] = "a"
+        y[on] -= 0.003                       # "a" is worse than the market...
+        b = (~on) & (rng.random(hours) < 0.05)
+        state[b] = "b"                       # ..."b" is the market itself
+        df = pd.DataFrame({"combo_24h": state, "fwd_24h": y}, index=idx)
+        res = {r.state: r for r in evaluate_states(df, "combo_24h", 24, "all", np.ones(hours, bool), rng)}
+        self.assertAlmostEqual(res["a"].base_mean, y.mean())
+        self.assertLess(res["a"].excess, 0)
+        self.assertLess(abs(res["b"].excess), 0.001)
 
     def test_us_session_mask_follows_riga_time(self):
         # 2026-07-01 14:00 UTC = 17:00 Riga (summer, UTC+3); 2026-01-15 14:00 UTC = 16:00 Riga (winter, UTC+2)

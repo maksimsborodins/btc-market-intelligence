@@ -6,7 +6,9 @@ Rules (docs/REBUILD.md, "Research engine"):
 - Continuous features: Spearman IC, plus a walk-forward quintile test. Quintile edges and the sign (does a high value
   mean up or down?) are taken only from data before each month; the month is scored after that. Costs are charged on
   every active observation.
-- States have no fitted parameters; each is compared with the base rate of the same sample, per quarter for stability.
+- States are compared with the whole market of the same subset. Their one fitted bit, the trade direction, comes from
+  the first half of the history; the second half and the per-quarter results must agree, and the directional return
+  after cost must have a CI above zero.
 - Everything tested is counted and reported, rejected results included.
 """
 
@@ -27,6 +29,7 @@ BOOTSTRAP_RESAMPLES = 1000
 # Hundreds of feature x horizon x subset tests: a 95% interval would accept ~5% of pure noise. 99% plus the
 # stability rules below keeps the false-acceptance rate low (checked by the pure-noise end-to-end test).
 CI_PERCENTILES = (0.5, 99.5)
+HOUR_MS = 3_600_000
 MIN_TRAIN_DAYS = 180
 MIN_STATE_N = 100
 MIN_QUARTERS = 6              # out-of-sample quarters needed before anything can be accepted
@@ -147,9 +150,11 @@ class StateResult:
     up_rate: float
     base_up_rate: float
     quarters_same_sign: float
+    quarters: int
     first_part_excess: float
     last_part_excess: float
-    edge_after_cost: float
+    edge_after_cost: float        # mean of sign * forward return - cost: what a trader takes per entry
+    edge_lo: float
     accepted: bool
 
 
@@ -247,19 +252,31 @@ def evaluate_feature(df: pd.DataFrame, feature: str, horizon_h: int, subset: str
                          wf_mean, wf_lo, wf_hi, wf_q, accepted)
 
 
+def _window_h(state_col: str) -> int:
+    """Formation window of a state column, e.g. combo_24h -> 24."""
+    return int(state_col.rsplit("_", 1)[-1].rstrip("h"))
+
+
 def evaluate_states(df: pd.DataFrame, state_col: str, horizon_h: int, subset: str, mask: np.ndarray,
                     rng: np.random.Generator) -> list[StateResult]:
+    """Each state against the whole market of the subset (every hour with a known outcome, whatever its state).
+    The trade direction is the sign of the excess in the first half of the history only; acceptance needs the
+    directional return a trader would actually get (sign * forward return - cost) to have a CI above zero, the
+    same sign in the second half, and per-quarter stability."""
     y_col = f"fwd_{horizon_h}h"
-    in_sample = mask & df[state_col].notna().to_numpy() & df[y_col].notna().to_numpy()
-    if not in_sample.any():
+    market = mask & df[y_col].notna().to_numpy()
+    if not market.any():
         return []
-    y = df[y_col].where(in_sample)
-    states = df[state_col].where(in_sample)
+    y = df[y_col].where(market)
+    states = df[state_col].where(market)
     base_mean = float(y.mean())
     base_up = float((y.dropna() > 0).mean())
-    block = block_hours(horizon_h)
+    hold = max(horizon_h, _window_h(state_col))   # one formation window drives every overlapping outcome
+    block = block_hours(hold)
     valid_index = y.dropna().index
-    cut = valid_index[int(len(valid_index) * 0.7)]
+    cut = valid_index[int(len(valid_index) * 0.5)]
+    early = (df.index < cut) & market
+    late = (df.index >= cut + horizon_h * HOUR_MS) & market   # purge outcomes that straddle the cut
     q_all = _quarter_labels(df.index)
     results = []
     for state in sorted(states.dropna().unique()):
@@ -269,28 +286,29 @@ def evaluate_states(df: pd.DataFrame, state_col: str, horizon_h: int, subset: st
             continue
         excess_series = pd.Series(np.where(is_state, y - base_mean, np.nan), index=df.index)
         excess, lo, hi = block_bootstrap_mean(excess_series.to_numpy(), block, rng)
-        # per quarter: state mean minus that quarter's base mean
+        first = float(y[is_state & early].mean() - y[early].mean())
+        last = float(y[is_state & late].mean() - y[late].mean())
+        sign = np.sign(first) if not math.isnan(first) else 0.0
+        trade = pd.Series(np.where(is_state, sign * y - COST, np.nan), index=df.index)
+        edge, trade_lo, _ = block_bootstrap_mean(trade.to_numpy(), block, rng)
+        # per quarter: state mean minus that quarter's market mean
         q_ex = []
         for label in np.unique(q_all[is_state]):
             in_q = q_all == label
-            s_rows = y[in_q & is_state]
+            s_rows = y[in_q & is_state].dropna()
             if len(s_rows) >= 20:
                 q_ex.append(float(s_rows.mean() - y[in_q].mean()))
-        same = _share_same_sign(q_ex, excess)
-        early = df.index < cut
-        first = float(y[is_state & early].mean() - y[early].mean())
-        last = float(y[is_state & ~early].mean() - y[~early].mean())
-        edge = abs(excess) - COST
+        same = _share_same_sign(q_ex, sign)
         accepted = bool(
-            len(q_ex) >= MIN_QUARTERS and independent_count(is_state, horizon_h) >= MIN_INDEPENDENT
-            and not math.isnan(lo) and (lo > 0 or hi < 0)
+            sign != 0 and len(q_ex) >= MIN_QUARTERS and independent_count(is_state, hold) >= MIN_INDEPENDENT
+            and not math.isnan(lo) and (lo > 0 or hi < 0) and np.sign(excess) == sign
+            and not math.isnan(trade_lo) and trade_lo > 0
             and not math.isnan(same) and same >= QUARTER_CONSISTENCY
-            and np.sign(first) == np.sign(last) == np.sign(excess)
-            and edge > 0
+            and np.sign(last) == sign
         )
         results.append(StateResult(state_col, str(state), horizon_h, subset, n, float(y[is_state].mean()),
                                    base_mean, excess, lo, hi, float((y[is_state] > 0).mean()), base_up, same,
-                                   first, last, float(edge), accepted))
+                                   len(q_ex), first, last, float(edge), float(trade_lo), accepted))
     return results
 
 
@@ -335,11 +353,18 @@ def summarize(report: dict, top: int = 15) -> str:
     states = sorted(report["states"], key=lambda r: -abs(r["excess"]) if r["excess"] == r["excess"] else 0)
     acc_s = [r for r in states if r["accepted"]]
     lines.append(f"## States accepted: {len(acc_s)}")
-    lines.append("| state | window | horizon | subset | n | excess vs base | 99% CI | up-rate / base | quarters same sign |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
-    for r in acc_s[:top]:
-        lines.append(f"| {r['state']} | {r['state_column']} | {r['horizon_h']}h | {r['subset']} | {r['n']} | {_pct(r['excess'])} | "
-                     f"{_pct(r['excess_lo'])}..{_pct(r['excess_hi'])} | {r['up_rate']:.1%} / {r['base_up_rate']:.1%} | {r['quarters_same_sign']:.0%} |")
+    state_header = ["| state | window | horizon | subset | n | excess vs market | 99% CI | trade after cost [lo] | up-rate / market | quarters same sign |",
+                    "|---|---|---|---|---|---|---|---|---|---|"]
+
+    def state_row(r):
+        return (f"| {r['state']} | {r['state_column']} | {r['horizon_h']}h | {r['subset']} | {r['n']} | {_pct(r['excess'])} | "
+                f"{_pct(r['excess_lo'])}..{_pct(r['excess_hi'])} | {_pct(r['edge_after_cost'])} [{_pct(r['edge_lo'])}] | "
+                f"{r['up_rate']:.1%} / {r['base_up_rate']:.1%} | {r['quarters_same_sign']:.0%} of {r['quarters']} |")
+    lines += state_header + [state_row(r) for r in acc_s[:top]]
+    lines += ["", "## Strongest rejected states (by trade after cost)"] + state_header
+    by_edge = sorted([r for r in states if not r["accepted"] and r["edge_after_cost"] == r["edge_after_cost"]],
+                     key=lambda r: -r["edge_after_cost"])
+    lines += [state_row(r) for r in by_edge[:top]]
     feats = sorted(report["features"], key=lambda r: -(r["wf_mean_after_cost"] if r["wf_mean_after_cost"] == r["wf_mean_after_cost"] else -1))
     acc_f = [r for r in feats if r["accepted"]]
     lines += ["", f"## Features accepted (walk-forward, after costs): {len(acc_f)}",
