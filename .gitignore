@@ -12,6 +12,7 @@ __pycache__/
 .agents/
 
 # Data cache & temporary files
+data/
 data_cache/
 test_ui_screenshots/
 *.log
