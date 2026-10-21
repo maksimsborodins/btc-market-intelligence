@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 
 from btcmi.strategies import (
-    FUNDING_8H, M15, MAKER, RISK_USD, SLIPPAGE, TAKER, Trade, alligator, fractals, simulate,
+    FUNDING_8H, HOUR_MS, M15, MAKER, RISK_USD, SLIPPAGE, TAKER, Trade, alligator, first_breach, fractal_known,
+    fractals, simulate,
 )
 
 START = 1_700_000_000_000 // M15 * M15
@@ -59,6 +60,15 @@ class TestIndicators(unittest.TestCase):
         up, dn = fractals(pd.DataFrame({"high": h, "low": l}))
         self.assertEqual(list(np.flatnonzero(up)), [2])
         self.assertEqual(list(np.flatnonzero(dn)), [])   # bar 5 has only one bar after it
+
+    def test_fractal_is_taken_once_at_its_first_breach(self):
+        # up fractal at bar 2 (high 5) is known after bar 4; bar 6 trades through it, bar 9 again
+        h = [1, 2, 5, 2, 1, 3, 6, 2, 1, 7, 2]
+        b = pd.DataFrame({"high": h, "low": [0.5] * len(h)})
+        self.assertEqual(first_breach(b, 2, 5.0, True), 6)
+        self.assertEqual(first_breach(b, 2, 50.0, True), len(h))
+        ts = np.arange(len(h)) * HOUR_MS
+        self.assertEqual(fractal_known(ts)[2], ts[4] + HOUR_MS)
 
     def test_alligator_has_no_look_ahead(self):
         rng = np.random.default_rng(0)

@@ -214,6 +214,28 @@ OLIGATOR_EXITS = {
 
 
 COST_STOP = 0.0095   # stop at which a full round trip (~0.14%) is 15% of the risk: the "fees eat the trade" filter
+TRIGGER_LIFE_H = 30 * 24   # a fractal not taken within 30 days is no longer a trigger
+
+
+def fractal_known(ts: np.ndarray) -> np.ndarray:
+    """Time a fractal at bar i becomes known: the close of bar i + 2 (by index, so a missing hour cannot shorten it)."""
+    nxt = np.concatenate([ts[2:], np.repeat(ts[-1:], 2)])
+    return nxt + HOUR_MS
+
+
+def first_breach(b: pd.DataFrame, i: int, level: float, above: bool) -> int:
+    """Index of the first hourly bar after fractal i is confirmed (bars i+3...) that trades through `level`;
+    len(b) when it does not happen within TRIGGER_LIFE_H."""
+    seg = b["high"].to_numpy()[i + 3:i + 3 + TRIGGER_LIFE_H] if above else b["low"].to_numpy()[i + 3:i + 3 + TRIGGER_LIFE_H]
+    hit = np.flatnonzero(seg >= level if above else seg <= level)
+    return i + 3 + int(hit[0]) if len(hit) else len(b)
+
+
+def fractal_trail(known: np.ndarray, levels: np.ndarray, side: int, after_ms: int, max_hold_h: int) -> list[tuple[int, float]]:
+    """Stop updates behind each opposite fractal confirmed after `after_ms`, within the maximum hold."""
+    a = int(np.searchsorted(known, after_ms, side="right"))
+    z = int(np.searchsorted(known, after_ms + max_hold_h * HOUR_MS, side="right"))
+    return list(zip(known[a:z].tolist(), (levels[a:z] * (1 - side * STOP_BUFFER)).tolist()))
 
 
 def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool = False, min_stop: float = MIN_STOP,
@@ -226,12 +248,16 @@ def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool =
     ts = b.index.to_numpy()
     h, l = b["high"].to_numpy(), b["low"].to_numpy()
     jaw, teeth, lips = (al[k].to_numpy() for k in ("jaw", "teeth", "lips"))
-    known = ts + 3 * HOUR_MS                       # fractal at i is confirmed at the close of i + 2
+    known = fractal_known(ts)
     # fractals beyond the jaw, in order of confirmation: (known, level, bar index)
     up_beyond = [(known[i], h[i], i) for i in np.flatnonzero(up) if h[i] > jaw[i]]
     dn_beyond = [(known[i], l[i], i) for i in np.flatnonzero(dn) if l[i] < jaw[i]]
-    all_up = [(known[i], h[i]) for i in np.flatnonzero(up)]
-    all_dn = [(known[i], l[i]) for i in np.flatnonzero(dn)]
+    # a fractal is taken once, at its first breach, whether or not we were flat then: no stale triggers after a trade
+    up_breach = [first_breach(b, i, lv, True) for _, lv, i in up_beyond]
+    dn_breach = [first_breach(b, i, lv, False) for _, lv, i in dn_beyond]
+    up_i, dn_i = np.flatnonzero(up), np.flatnonzero(dn)
+    all_up = (known[up_i], h[up_i])
+    all_dn = (known[dn_i], l[dn_i])
     up_known = np.array([u[0] for u in up_beyond])
     dn_known = np.array([d[0] for d in dn_beyond])
     targets_def, be, use_trail = OLIGATOR_EXITS[exit_rule]
@@ -240,15 +266,15 @@ def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool =
     t15 = b15.index.to_numpy()
     h15, l15, o15 = b15["high"].to_numpy(), b15["low"].to_numpy(), b15["open"].to_numpy()
     free_at = 0
-    taken_up, taken_dn = set(), set()
     for bi in range(len(ts) - 1):
         now = ts[bi] + HOUR_MS                     # close of bar bi: decisions for the next hour
         if now < free_at or np.isnan(jaw[bi]):
             continue
         iu = int(np.searchsorted(up_known, now, side="right")) - 1
         idn = int(np.searchsorted(dn_known, now, side="right")) - 1
-        trig_long = up_beyond[iu] if iu >= 0 and iu not in taken_up else None
-        trig_short = dn_beyond[idn] if idn >= 0 and idn not in taken_dn else None
+        # the latest fractal beyond the jaw is the trigger, and only in the hour it is first breached
+        trig_long = up_beyond[iu] if iu >= 0 and up_breach[iu] == bi + 1 else None
+        trig_short = dn_beyond[idn] if idn >= 0 and dn_breach[idn] == bi + 1 else None
         if trig_long is None and trig_short is None:
             continue
         # walk the next hour on 15m bars: first trigger taken wins
@@ -267,13 +293,7 @@ def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool =
                 hit = ("short", j)
             if hit:
                 break
-        if hit is None:
-            continue
-        if long_hit:
-            taken_up.add(iu)
-        if short_hit:
-            taken_dn.add(idn)
-        if hit == "both":
+        if hit is None or hit == "both":
             continue
         side_name, j = hit
         side = 1 if side_name == "long" else -1
@@ -301,7 +321,7 @@ def oligator(b15: pd.DataFrame, exit_rule: str = "ladder", widening_only: bool =
                         "session": riga_session(int(t15[j]))})
         trail = None
         if use_trail:   # any new opposite fractal, beyond the jaw or not
-            trail = [(k_, lv * (1 - side * STOP_BUFFER)) for k_, lv in (all_dn if side > 0 else all_up) if k_ > now]
+            trail = fractal_trail(*(all_dn if side > 0 else all_up), side, now, max_hold_h)
         targets = [(entry * (1 + side * pct), frac) for pct, frac in targets_def]
         trades.append(simulate(b15, t, True, targets, be, trail, max_hold_h))
         free_at = trades[-1].exit_ts

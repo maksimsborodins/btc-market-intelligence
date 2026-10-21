@@ -16,8 +16,11 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from btcmi import db  # noqa: E402
 from btcmi.strategies import (  # noqa: E402
-    COST_STOP, OLIGATOR_EXITS, load_15m, oligator, rsi30m, set_funding, to_frame,
+    COST_STOP, OLIGATOR_EXITS, Trade, fractal_known, fractal_trail, fractals, load_15m, oligator, resample, rsi30m,
+    set_funding, simulate, to_frame,
 )
+
+CONTROLLED = {"oligator_trail", "oligator_trail + widening + stop>=0.95%"}
 
 OUT = Path(__file__).resolve().parent.parent / "research" / "strategies"
 START = "2020-09-01"
@@ -26,6 +29,30 @@ ERA_CUT = "2024-01-01"
 
 def ms(day: str) -> int:
     return int(dt.datetime.fromisoformat(day).replace(tzinfo=dt.timezone.utc).timestamp() * 1000)
+
+
+def random_control(b15: pd.DataFrame, trades: pd.DataFrame, rng, draws: int = 5) -> pd.DataFrame:
+    """Each real trade re-entered at random hours with the same side, stop distance and fractal trail: what the
+    exit method plus BTC's drift earn without the Alligator entry signal."""
+    b = resample(b15, 60).dropna()
+    up, dn = fractals(b)
+    ts = b.index.to_numpy()
+    known = fractal_known(ts)
+    lv = {1: (known[dn], b["low"].to_numpy()[dn]), -1: (known[up], b["high"].to_numpy()[up])}
+    t15, o15 = b15.index.to_numpy(), b15["open"].to_numpy()
+    lo = int(np.searchsorted(t15, ms(START)))
+    hi = int(np.searchsorted(t15, t15[-1] - 14 * 86_400_000))
+    out = []
+    for side, stop_pct in zip(trades["side"].to_numpy(), trades["stop_pct"].to_numpy()):
+        for _ in range(draws):
+            j = int(rng.integers(lo, hi)) // 4 * 4        # on the hour, like a 1h signal
+            if np.isnan(o15[j]):
+                continue
+            entry = float(o15[j])
+            t = Trade("random", int(side), int(t15[j]), entry, entry * (1 - side * stop_pct))
+            out.append(simulate(b15, t, True, [], False, fractal_trail(*lv[int(side)], int(side), int(t15[j]), 14 * 24),
+                                14 * 24))
+    return to_frame(out)
 
 
 def stats(t: pd.DataFrame) -> dict:
@@ -41,11 +68,12 @@ def stats(t: pd.DataFrame) -> dict:
         "t": float(r.mean() / (r.std(ddof=1) / np.sqrt(len(r)))) if len(r) > 2 else np.nan,
         "total_r": float(r.sum()), "pf": float(wins / losses) if losses > 0 else np.inf, "max_dd_r": dd,
         "avg_gross_r": float(t["r_gross"].mean()), "avg_fee_r": float(t["fee_r"].mean()),
+        "t_gross": float(t["r_gross"].mean() / (t["r_gross"].std(ddof=1) / np.sqrt(len(r)))) if len(r) > 2 else np.nan,
         "median_stop": float(t["stop_pct"].median()), "fee_over_15": float((t["fee_r"] > 0.15).mean()),
     }
 
 
-HEAD = ("| sample | trades | per month | win | avg R net [t] | total R | PF | max DD R | avg R before costs | "
+HEAD = ("| sample | trades | per month | win | avg R net [t] | total R | PF | max DD R | avg R before costs [t] | "
         "costs R/trade | median stop | trades with costs > 15% of risk |")
 SEP = "|---|---|---|---|---|---|---|---|---|---|---|---|"
 
@@ -55,7 +83,7 @@ def line(label: str, t: pd.DataFrame) -> str:
     if s["n"] < 5:
         return f"| {label} | {s['n']} | too few | | | | | | | | | |"
     return (f"| {label} | {s['n']} | {s['per_month']:.1f} | {s['win']:.0%} | {s['avg_r']:+.3f} [{s['t']:.1f}] | "
-            f"{s['total_r']:+.1f} | {s['pf']:.2f} | {s['max_dd_r']:.1f} | {s['avg_gross_r']:+.3f} | {s['avg_fee_r']:.3f} | "
+            f"{s['total_r']:+.1f} | {s['pf']:.2f} | {s['max_dd_r']:.1f} | {s['avg_gross_r']:+.3f} [{s['t_gross']:.1f}] | {s['avg_fee_r']:.3f} | "
             f"{s['median_stop']:.2%} | {s['fee_over_15']:.0%} |")
 
 
@@ -102,7 +130,14 @@ def main(argv=None) -> int:
         splits = (["mouth_open", "widening", "against_prev_trend", "session", "exit_reason"] if name.startswith("oligator")
                   else ["with_trend", "near_level", "pattern", "session", "exit_reason"])
         lines += [f"## {name}", ""] + breakdown(t, splits) + [""]
-        print(name, stats(t))
+        print(name, {k: round(v, 3) if isinstance(v, float) else v for k, v in stats(t).items()})
+        if name in CONTROLLED:
+            rc = random_control(b15, t, np.random.default_rng(11))
+            lines += [f"### Control for {name}: same side, stop distance and fractal trail, random entry hour "
+                      f"(5 draws per trade)", "", HEAD, SEP, line("random entries", rc),
+                      line("random, 2020-09..2023", rc[rc.entry_ts < ms(ERA_CUT)]),
+                      line("random, 2024..now", rc[rc.entry_ts >= ms(ERA_CUT)]), ""]
+            print("  random control", {k: round(v, 3) if isinstance(v, float) else v for k, v in stats(rc).items()})
     (OUT / "report.md").write_text("\n".join(lines), encoding="utf-8")
     return 0
 
