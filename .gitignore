@@ -32,3 +32,4 @@ env/
 Thumbs.db
 .vscode/
 .idea/
+research/*.json

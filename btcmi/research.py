@@ -335,7 +335,7 @@ def summarize(report: dict, top: int = 15) -> str:
     states = sorted(report["states"], key=lambda r: -abs(r["excess"]) if r["excess"] == r["excess"] else 0)
     acc_s = [r for r in states if r["accepted"]]
     lines.append(f"## States accepted: {len(acc_s)}")
-    lines.append("| state | window | horizon | subset | n | excess vs base | 95% CI | up-rate / base | quarters same sign |")
+    lines.append("| state | window | horizon | subset | n | excess vs base | 99% CI | up-rate / base | quarters same sign |")
     lines.append("|---|---|---|---|---|---|---|---|---|")
     for r in acc_s[:top]:
         lines.append(f"| {r['state']} | {r['state_column']} | {r['horizon_h']}h | {r['subset']} | {r['n']} | {_pct(r['excess'])} | "
